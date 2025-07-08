@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "builder-mcp": {
+      "command": "python",
+      "args": ["-m", "builder_mcp"],
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    "example-server": {
+      "command": "python",
+      "args": ["-m", "my_mcp_server"],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  }
+}

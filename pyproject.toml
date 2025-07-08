@@ -1,0 +1,46 @@
+[project]
+name = "reagent"
+version = "0.1.0"
+description = "Reactive Agent Orchestration System - A reactive layer built on AWS Strands Agents SDK"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "strands-agents>=0.2.0",
+    "strands-agents-tools>=0.1.0",
+    "pydantic>=2.0.0",
+    "structlog>=23.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "asyncio>=3.4.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "coverage>=7.0.0",
+]
+
+[project.scripts]
+reagent = "reagent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
