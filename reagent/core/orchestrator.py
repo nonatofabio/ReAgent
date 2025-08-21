@@ -83,6 +83,7 @@ class ReactiveSwarmOrchestrator:
         system_prompt: Optional[str] = None,
         enable_logging: bool = True,
         mcp_config_path: Optional[str] = None,
+        tools: Optional[List[Any]] = None,
         mcp_transport_callable: Optional[Callable[[], MCPTransport]] = None  # Deprecated, kept for backward compatibility
     ):
         self.logger = logging.getLogger(f"{__name__}.ReactiveSwarmOrchestrator")
@@ -120,7 +121,7 @@ class ReactiveSwarmOrchestrator:
         # Create base agent with swarm tool and MCP tools
         self.base_agent = Agent(
             model=model,
-            tools=[swarm] + self._create_reactive_tools() + self.mcp_tools,
+            tools=[swarm] + self._create_reactive_tools() + self.mcp_tools + tools if tools else [],
             system_prompt=system_prompt
         )
         

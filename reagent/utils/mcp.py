@@ -25,32 +25,11 @@ def load_mcp_client_from_config(config_path: str) -> Optional[MCPClient]:
     """
     Load MCP client from standard MCP configuration file.
     
-    This function reads a standard MCP configuration file and creates an MCPClient
-    using Strands' native MCP support. The configuration should follow the standard
-    MCP format:
-    
-    ```json
-    {
-      "mcpServers": {
-        "serverName": {
-          "command": "python",
-          "args": ["-m", "server_module"],
-          "transport": {"type": "stdio"}
-        }
-      }
-    }
-    ```
-    
     Args:
         config_path: Path to the standard MCP configuration file
         
     Returns:
         MCPClient instance or None if configuration is invalid
-        
-    Raises:
-        ImportError: If Strands MCP support is not available
-        FileNotFoundError: If configuration file doesn't exist
-        ValueError: If configuration is invalid
     """
     if not MCP_AVAILABLE:
         raise ImportError(
@@ -69,31 +48,33 @@ def load_mcp_client_from_config(config_path: str) -> Optional[MCPClient]:
         if 'mcpServers' not in config:
             raise ValueError("Configuration must contain 'mcpServers' section")
         
-        # Use Strands' native MCP client creation
-        # Note: This assumes Strands has a from_config method or similar
-        # If not available, we'll use the first server for simplicity
         servers = config['mcpServers']
         if not servers:
             raise ValueError("No MCP servers configured")
         
         # For simplicity, use the first configured server
-        # In a more complete implementation, this could support multiple servers
         server_name, server_config = next(iter(servers.items()))
         
-        # Create transport callable for Strands MCPClient
-        def create_transport() -> MCPTransport:
-            import subprocess
-            command = [server_config['command']] + server_config.get('args', [])
-            process = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                universal_newlines=True
-            )
-            return process.stdout, process.stdin
+        # Create transport callable using MCP's stdio transport
+        def create_transport():
+            from contextlib import asynccontextmanager
+            from mcp.client.stdio import stdio_client, StdioServerParameters
+            
+            @asynccontextmanager
+            async def transport_context():
+                command = [server_config['command']] + server_config.get('args', [])
+                env = server_config.get('env', {})
+                
+                server_params = StdioServerParameters(
+                    command=server_config['command'],
+                    args=server_config.get('args', []),
+                    env=env if env else None
+                )
+                
+                async with stdio_client(server_params) as streams:
+                    yield streams
+            
+            return transport_context()
         
         return MCPClient(create_transport)
         
