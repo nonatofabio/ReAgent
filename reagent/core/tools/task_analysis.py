@@ -71,69 +71,106 @@ def extract_and_validate_analysis(response: str) -> Dict[str, Any]:
 
 def generate_fallback_analysis(task: str) -> Dict[str, Any]:
     """
-    Generate a fallback analysis when extraction or validation fails.
+    Generate LLM-based analysis when extraction or validation fails.
     
     Args:
         task: The task description
         
     Returns:
-        Fallback analysis as a dictionary
+        LLM-generated analysis as a dictionary
     """
-    # Simple heuristic based on task length and keyword detection
-    task_length = len(task)
+    from strands import Agent
+    from strands.models import BedrockModel
     
-    # Detect complexity indicators
-    complexity_keywords = [
-        "analyze", "research", "compare", "evaluate", "optimize",
-        "design", "develop", "implement", "architect", "complex",
-        "comprehensive", "detailed", "thorough", "extensive"
-    ]
-    
-    keyword_count = sum(1 for keyword in complexity_keywords if keyword.lower() in task.lower())
-    
-    # Calculate complexity score (1-10)
-    length_factor = min(5, task_length / 100)  # Max 5 points for length
-    keyword_factor = min(5, keyword_count)     # Max 5 points for keywords
-    
-    complexity_score = length_factor + keyword_factor
-    
-    # Determine complexity level
-    if complexity_score < 3:
-        complexity_level = "low"
-        recommended_size = 1
-        recommended_pattern = "collaborative"
-    elif complexity_score < 7:
-        complexity_level = "medium"
-        recommended_size = 3
-        recommended_pattern = "adaptive"
-    else:
-        complexity_level = "high"
-        recommended_size = 5
-        recommended_pattern = "adaptive"
-    
-    # Create basic steps
-    steps = [
-        {"description": "Analyze requirements", "estimated_time_minutes": 10},
-        {"description": "Execute primary task", "estimated_time_minutes": 30},
-        {"description": "Review and finalize", "estimated_time_minutes": 15}
-    ]
-    
-    # Create basic domain assessment
-    domains = [
-        {"domain": "general", "relevance": 1.0, "complexity": complexity_score / 10}
-    ]
-    
-    # Return analysis in the expected format
-    return {
-        "complexity_score": round(complexity_score, 1),
-        "complexity_level": complexity_level,
-        "recommended_swarm_size": recommended_size,
-        "recommended_pattern": recommended_pattern,
-        "steps": steps,
-        "domains": domains,
-        "reasoning": "Heuristic analysis based on task length and keyword detection",
-        "recommendations": [
-            f"Use {recommended_size} agents with {recommended_pattern} pattern",
-            "Monitor performance and adjust as needed"
-        ]
-    }
+    try:
+        # Create a simple agent for analysis
+        model = BedrockModel(
+            model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+            region_name="us-west-2"
+        )
+        
+        agent = Agent(
+            model=model,
+            system_prompt="You are a task complexity analyzer. Analyze tasks and provide structured complexity assessments."
+        )
+        
+        analysis_prompt = f"""
+        Analyze this task for complexity and provide a JSON response with the following structure:
+        {{
+            "complexity_score": <number 1-10>,
+            "complexity_level": "<low|medium|high>",
+            "recommended_swarm_size": <number 1-8>,
+            "recommended_pattern": "<collaborative|competitive|adaptive>",
+            "steps": [
+                {{"description": "<step description>", "estimated_time_minutes": <number>}}
+            ],
+            "domains": [
+                {{"domain": "<domain name>", "relevance": <0-1>, "complexity": <0-1>}}
+            ],
+            "reasoning": "<explanation of analysis>",
+            "recommendations": ["<recommendation 1>", "<recommendation 2>"]
+        }}
+        
+        Task to analyze: {task}
+        
+        Consider:
+        - Number of distinct subtasks required
+        - Domain expertise needed
+        - Coordination complexity
+        - Time sensitivity
+        - Quality requirements
+        
+        Respond with only the JSON structure.
+        """
+        
+        response = agent(analysis_prompt)
+        
+        # Extract JSON from response
+        import json
+        import re
+        
+        json_pattern = r'```json\s*(.*?)\s*```'
+        match = re.search(json_pattern, str(response), re.DOTALL)
+        
+        if match:
+            analysis_json = match.group(1)
+        else:
+            # Try to find JSON in the response
+            json_start = str(response).find('{')
+            json_end = str(response).rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                analysis_json = str(response)[json_start:json_end]
+            else:
+                raise ValueError("No JSON found in response")
+        
+        analysis = json.loads(analysis_json)
+        
+        # Validate required fields
+        required_fields = ['complexity_score', 'complexity_level', 'recommended_swarm_size', 'recommended_pattern']
+        for field in required_fields:
+            if field not in analysis:
+                raise ValueError(f"Missing required field: {field}")
+        
+        return analysis
+        
+    except Exception as e:
+        logger.error(f"LLM-based analysis failed: {str(e)}, falling back to minimal analysis")
+        
+        # Minimal fallback that doesn't use heuristics
+        return {
+            "complexity_score": 5.0,
+            "complexity_level": "medium",
+            "recommended_swarm_size": 3,
+            "recommended_pattern": "adaptive",
+            "steps": [
+                {"description": "Analyze and execute task", "estimated_time_minutes": 30}
+            ],
+            "domains": [
+                {"domain": "general", "relevance": 1.0, "complexity": 0.5}
+            ],
+            "reasoning": "LLM analysis unavailable, using conservative defaults",
+            "recommendations": [
+                "Use adaptive pattern with 3 agents",
+                "Monitor and adjust based on results"
+            ]
+        }

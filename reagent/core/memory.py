@@ -346,23 +346,83 @@ class ReactiveSharedMemory:
     # Private helper methods
     
     def _determine_optimal_tier(self, key: str, value: Any) -> MemoryTier:
-        """Determine optimal storage tier for new entry."""
-        # Simple heuristics for tier selection
+        """Determine optimal storage tier using LLM analysis."""
+        try:
+            from strands import Agent
+            from strands.models import BedrockModel
+            import json
+            
+            # Create a simple agent for tier analysis
+            model = BedrockModel(
+                model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+                region_name="us-west-2"
+            )
+            
+            agent = Agent(
+                model=model,
+                system_prompt="You are a memory management optimizer. Analyze data to determine optimal storage tiers."
+            )
+            
+            # Prepare data characteristics for analysis
+            value_size = len(str(value))
+            value_type = type(value).__name__
+            
+            analysis_prompt = f"""
+            Analyze this data entry to determine the optimal storage tier:
+            
+            Key: {key}
+            Value type: {value_type}
+            Value size: {value_size} characters
+            
+            Available tiers:
+            - LOCAL: Fast access, temporary data, lost on restart
+            - PERSISTENT: Disk storage, survives restarts, moderate access speed
+            - SHARED: Cross-process sharing, network access, slower but distributed
+            - ARCHIVE: Long-term storage, slowest access, for historical data
+            
+            Consider:
+            - Access frequency (how often will this be retrieved?)
+            - Persistence needs (should it survive restarts?)
+            - Sharing requirements (multiple processes need access?)
+            - Data importance (critical vs temporary?)
+            - Size implications (large data should avoid fast tiers?)
+            
+            Respond with only one word: LOCAL, PERSISTENT, SHARED, or ARCHIVE
+            """
+            
+            response = str(agent(analysis_prompt)).strip().upper()
+            
+            # Validate response and map to enum
+            tier_mapping = {
+                'LOCAL': MemoryTier.LOCAL,
+                'PERSISTENT': MemoryTier.PERSISTENT,
+                'SHARED': MemoryTier.SHARED,
+                'ARCHIVE': MemoryTier.ARCHIVE
+            }
+            
+            if response in tier_mapping:
+                return tier_mapping[response]
+            else:
+                # If LLM response is invalid, use conservative fallback
+                return self._fallback_tier_selection(key, value)
+                
+        except Exception as e:
+            # If LLM analysis fails, use fallback logic
+            return self._fallback_tier_selection(key, value)
+    
+    def _fallback_tier_selection(self, key: str, value: Any) -> MemoryTier:
+        """Conservative fallback tier selection when LLM analysis fails."""
         value_size = len(str(value))
         
-        # Large values go to persistent storage
-        if value_size > 10000:
+        # Conservative rules without heuristics - err on side of persistence
+        if key.startswith('execution:') or key.startswith('result:'):
             return MemoryTier.PERSISTENT
-        
-        # Execution results go to persistent storage
-        if key.startswith('execution:'):
-            return MemoryTier.PERSISTENT
-        
-        # Temporary/working data goes to local cache
-        if key.startswith('temp:') or key.startswith('work:'):
+        elif key.startswith('temp:') or key.startswith('work:'):
             return MemoryTier.LOCAL
-        
-        # Default to local cache for fast access
+        elif value_size > 50000:  # Very large data
+            return MemoryTier.ARCHIVE
+        else:
+            return MemoryTier.PERSISTENT  # Default to persistent for safety
         return MemoryTier.LOCAL
         
         # TODO: Replace with Strands agent-based analysis for better accuracy
