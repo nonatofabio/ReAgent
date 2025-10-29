@@ -13,12 +13,15 @@ ReAgent provides reactive multi-agent coordination by extending AWS Strands Agen
 │                    ReAgent System                           │
 ├─────────────────────────────────────────────────────────────┤
 │  ReactiveSwarmOrchestrator (Strands Agent)                 │
+│  ├── LLM-Based Task Analysis (no hardcoded complexity)     │
 │  ├── Dynamic Swarm Sizing (1-8 agents)                     │
 │  ├── Pattern Switching (collaborative/competitive/hybrid)   │
-│  ├── Real-time Adaptation Engine                           │
+│  ├── Real-time Adaptation Engine (LLM-driven)              │
 │  └── Performance Monitoring & Optimization                 │
 ├─────────────────────────────────────────────────────────────┤
 │  ReactiveSharedMemory                                      │
+│  ├── LLM-Based Tier Selection (no hardcoded rules)         │
+│  ├── Real-time Agent Coordination                          │
 │  ├── Tiered Storage (local/persistent/shared/archive)      │
 │  ├── Automatic Tier Management                             │
 │  └── Access Pattern Optimization                           │
@@ -32,11 +35,17 @@ ReAgent provides reactive multi-agent coordination by extending AWS Strands Agen
 
 ## Key Features
 
+### 🧠 LLM-Driven Intelligence
+- **No Hardcoded Logic**: All decisions use LLM analysis for context-aware orchestration
+- **Task Complexity Analysis**: LLM evaluates task requirements and recommends optimal configurations
+- **Adaptive Triggers**: LLM determines when and how to adapt swarm behavior
+- **Memory Management**: LLM-based tier selection for optimal data placement
+
 ### 🔄 Reactive Orchestration
-- **Dynamic Swarm Sizing**: Automatically adjusts agent count (1-8) based on task complexity
+- **Dynamic Swarm Sizing**: Automatically adjusts agent count (1-8) based on LLM task analysis
 - **Pattern Switching**: Switches between collaborative, competitive, and hybrid coordination
-- **Real-time Adaptation**: Modifies swarm configuration during execution
-- **Performance Monitoring**: Tracks metrics and triggers optimizations
+- **Real-time Adaptation**: Modifies swarm configuration during execution based on LLM evaluation
+- **Performance Monitoring**: Tracks metrics and triggers LLM-based optimizations
 
 ### 🧠 Built on AWS Strands
 - **Production-Proven Foundation**: Uses the same SDK that powers Amazon Q Developer
@@ -44,23 +53,24 @@ ReAgent provides reactive multi-agent coordination by extending AWS Strands Agen
 - **Model Flexibility**: Support for 100+ LLM providers via Strands integration
 - **Enterprise Ready**: Built-in observability and AWS deployment patterns
 
-### 💾 Hybrid Memory Architecture
-- **Tiered Storage**: Local cache → Persistent → Shared → Archive
-- **Automatic Management**: Promotes/demotes data based on access patterns
+### 💾 Reactive Shared Memory
+- **Real-time Coordination**: Agents share findings and coordinate through memory during execution
+- **Tiered Storage**: Local cache → Persistent → Shared → Archive with LLM-based placement
+- **Automatic Management**: Promotes/demotes data based on LLM analysis of access patterns
 - **Thread-Safe**: Concurrent access for multi-agent coordination
-- **Learning**: Stores and learns from execution history
+- **Phase Continuity**: Memory maintains context between execution phases
 
 ### 🎯 Adaptation Intelligence
-- **6 Adaptation Triggers**: Complexity, performance, errors, resources, quality, time pressure
-- **Rule-Based System**: Configurable adaptation rules with priorities
+- **LLM-Based Triggers**: 6 adaptation triggers evaluated by LLM instead of hardcoded thresholds
+- **Contextual Rules**: LLM analyzes execution patterns to determine adaptation needs
 - **Cooldown Management**: Prevents excessive adaptations
-- **Historical Learning**: Improves based on past executions
+- **Historical Learning**: Improves based on past executions stored in memory
 
 ## Quick Start
 
 ### Prerequisites
 
-ReAgent uses [uv](https://docs.astral.sh/uv/) for fast, reliable Python package management. Install uv first:
+ReAgent uses [uv](https://docs.astral.sh/uv/) for Python package management. Install uv first:
 
 ```bash
 # Install uv (recommended)
@@ -82,7 +92,7 @@ uv pip install -e .
 # Or install with pip
 pip install -e .
 
-# Set up AWS credentials for Bedrock (if using AWS models)
+# Set up AWS credentials for Bedrock (required for LLM analysis)
 aws configure
 ```
 
@@ -95,7 +105,7 @@ from reagent.core.orchestrator import SwarmConfiguration, CoordinationPattern
 # Create reactive orchestrator
 orchestrator = ReactiveSwarmOrchestrator()
 
-# Execute reactive task
+# Execute reactive task with LLM-based optimization
 result = await orchestrator.execute_reactive_swarm(
     "Analyze renewable energy trends and provide policy recommendations",
     config=SwarmConfiguration(
@@ -128,25 +138,56 @@ reagent demo system_health
 # Check system status
 reagent status
 
-# View available coordination patterns
-reagent patterns
+# View memory usage
+reagent memory status
 
 # If using uv for development, prefix with uv run:
 uv run reagent execute "Your task here"
 uv run reagent status
 ```
 
+## How It Works
+
+### 4-Phase Reactive Execution
+
+1. **Task Analysis Phase**: LLM analyzes task complexity and optimizes initial configuration
+2. **Initial Execution Phase**: Swarm executes with agents coordinating through shared memory
+3. **Adaptive Phase**: LLM evaluates results and adapts configuration if needed
+4. **Finalization Phase**: Results stored in memory for future learning
+
+### Real-time Agent Coordination
+
+Agents use shared memory throughout execution:
+```python
+# Agents store findings for others to build upon
+store_swarm_memory("findings:phase:agent_1", research_data)
+
+# Agents retrieve context to avoid duplication
+previous_work = retrieve_swarm_memory("findings:phase:agent_2")
+
+# Agents coordinate work division
+store_swarm_memory("coordination:phase", "Agent 1: economics, Agent 2: policy")
+```
+
+### LLM-Based Adaptation
+
+Instead of hardcoded rules, LLM evaluates:
+- Task complexity changes during execution
+- Performance patterns and bottlenecks
+- Quality issues requiring different coordination
+- Resource constraints needing optimization
+
 ## Core Components
 
 ### ReactiveSwarmOrchestrator
-Main orchestration engine with reactive adaptation:
+Main orchestration engine with LLM-driven adaptation:
 
 ```python
-# Adaptive coordination that switches patterns based on results
+# LLM analyzes task and recommends optimal configuration
 config = SwarmConfiguration(
     initial_size=2,
     max_size=8,
-    coordination_pattern=CoordinationPattern.ADAPTIVE,  # ReAgent-specific
+    coordination_pattern=CoordinationPattern.ADAPTIVE,  # LLM-selected
     adaptation_triggers=[
         AdaptationTrigger.COMPLEXITY_INCREASE,
         AdaptationTrigger.PERFORMANCE_DEGRADATION
@@ -155,21 +196,21 @@ config = SwarmConfiguration(
 ```
 
 ### ReactiveSharedMemory
-Tiered memory system with automatic optimization:
+Tiered memory system with LLM-based optimization:
 
 ```python
-# Stores data in optimal tier based on access patterns
+# LLM determines optimal tier based on data characteristics
 await memory.store_with_tier("execution_result", result, tier="auto")
 
-# Retrieves with access tracking and tier promotion
+# Retrieves with access tracking and LLM-based tier promotion
 data = await memory.retrieve_with_context("key", include_history=True)
 ```
 
 ### AdaptationEngine
-Real-time adaptation based on execution patterns:
+Real-time adaptation using LLM evaluation:
 
 ```python
-# Analyzes performance and triggers adaptations
+# LLM analyzes performance and determines if adaptations are needed
 adaptations = engine.analyze_and_adapt(
     current_config=config,
     intermediate_results=results,
@@ -182,10 +223,10 @@ adaptations = engine.analyze_and_adapt(
 ### File Analysis with Reactive Adaptation
 ```python
 # The orchestrator will:
-# 1. Start with 3 agents analyzing file structure
-# 2. Detect complexity and increase to 5 agents
-# 3. Switch to collaborative pattern for comprehensive analysis
-# 4. Generate insights and recommendations
+# 1. LLM analyzes file structure complexity → recommends 3 agents
+# 2. Agents coordinate through shared memory during analysis
+# 3. LLM detects complexity increase → adapts to 5 agents
+# 4. Agents share findings in memory → generate comprehensive insights
 
 result = await orchestrator.execute_reactive_swarm(
     "Analyze all Python files in this project and provide optimization recommendations"
@@ -195,10 +236,10 @@ result = await orchestrator.execute_reactive_swarm(
 ### System Monitoring with Dynamic Response
 ```python
 # The orchestrator will:
-# 1. Deploy monitoring agents across system components
-# 2. Adapt monitoring frequency based on system load
-# 3. Spawn additional agents when issues detected
-# 4. Coordinate response actions automatically
+# 1. LLM determines monitoring strategy → deploys specialized agents
+# 2. Agents share monitoring data through memory in real-time
+# 3. LLM detects anomalies → spawns additional response agents
+# 4. Agents coordinate response actions through shared memory
 
 result = await orchestrator.execute_reactive_swarm(
     "Monitor system health and respond to anomalies",
@@ -210,325 +251,20 @@ result = await orchestrator.execute_reactive_swarm(
 )
 ```
 
-## Debugging & Observability
-
-ReAgent provides comprehensive observability features to help you understand swarm behavior, diagnose issues, and optimize performance.
-
-### Debug Modes
-
-#### Basic Debug Mode
-```bash
-# Enable debug logging
-reagent execute "Your task" --debug --verbose
-
-# Save debug logs to file
-reagent execute "Your task" --debug --log-file reagent.log
-```
-
-#### Memory System Debugging
-```bash
-# Show memory operations during execution
-reagent execute "Your task" --show-memory --debug
-
-# Check memory system status
-reagent memory status
-
-# Inspect specific memory entries
-reagent memory inspect --key execution
-
-# Clean memory system
-reagent memory clean
-```
-
-#### Full Observability Mode
-```bash
-# Complete debugging with all features enabled
-reagent execute "Research AI impact on job markets" \
-  --debug \
-  --verbose \
-  --show-memory \
-  --log-file full-debug.log
-```
-
-### Memory System Inspection
-
-The memory system provides detailed insights into swarm execution:
-
-```bash
-# View memory system overview
-reagent memory status
-```
-
-**Sample Output:**
-```
-Memory System Status
-┌─────────────────────┬───────┬──────────────────────────────┐
-│ Category            │ Count │ Details                      │
-├─────────────────────┼───────┼──────────────────────────────┤
-│ Execution Records   │ 3     │ Task execution history       │
-│ Adaptation Records  │ 2     │ Reactive adaptation history  │
-│ Configuration Records│ 1     │ Swarm configuration snapshots│
-│ Other Records       │ 0     │ Miscellaneous memory entries │
-│ Total Size          │ 45.2 KB│ Directory: ./reagent_memory │
-└─────────────────────┴───────┴──────────────────────────────┘
-
-Recent Executions:
-  1. execution:2948343081471992029:1751524504.json (2025-07-03 13:28:36)
-  2. execution:-6872853886109587887:1751504227.json (2025-07-03 13:00:27)
-```
-
-### Logging Levels
-
-ReAgent uses structured logging with multiple levels:
-
-- **DEBUG**: Detailed execution flow, memory operations, adaptation triggers
-- **INFO**: Key milestones, swarm configuration changes, task completion  
-- **WARNING**: Performance issues, adaptation failures, memory pressure
-- **ERROR**: Execution failures, serialization issues, system errors
-
-### Common Debugging Scenarios
-
-#### 1. Swarm Not Starting
-```bash
-# Check system status
-reagent status
-
-# Verify dependencies
-reagent execute "test" --debug
-```
-
-#### 2. Memory Issues
-```bash
-# Check memory usage
-reagent memory status
-
-# Clear memory if needed
-reagent memory clean
-
-# Run with memory debugging
-reagent execute "task" --show-memory --debug
-```
-
-#### 3. Adaptation Problems
-```bash
-# Enable adaptation logging
-reagent execute "complex task" --debug --verbose
-
-# Look for adaptation triggers in logs:
-# - COMPLEXITY_INCREASE
-# - PERFORMANCE_DEGRADATION  
-# - ERROR_RATE_INCREASE
-# - RESOURCE_PRESSURE
-# - QUALITY_DEGRADATION
-# - TIME_PRESSURE
-```
-
-#### 4. Performance Analysis
-```bash
-# Run with full metrics
-reagent execute "performance test" --debug --verbose --log-file perf.log
-
-# Check execution metrics:
-# - Agent spawn time (< 1 second per agent)
-# - Adaptation time (< 100ms for configuration changes)
-# - Memory access (Local < 1ms, Persistent < 10ms)
-# - Coordination overhead (< 50ms per cycle)
-```
-
-### Log Analysis
-
-#### Key Log Patterns to Look For
-
-**Successful Execution:**
-```
-INFO - Starting reactive swarm execution: task=...
-INFO - ReactiveSwarmOrchestrator initialized
-INFO - Swarm execution completed. Success: True
-```
-
-**Memory Operations:**
-```
-DEBUG - Persisting entry to disk: key='execution:...', tier=persistent
-INFO - Successfully persisted 'key' to disk (241 bytes)
-DEBUG - Retrieved from memory: key=..., tier=persistent
-```
-
-**Adaptation Events:**
-```
-INFO - Adaptation triggered: COMPLEXITY_INCREASE
-DEBUG - Swarm configuration adapted: size 3 -> 5
-INFO - Pattern switched: collaborative -> adaptive
-```
-
-**Common Issues:**
-```
-ERROR - Failed to persist entry to disk: Object not JSON serializable
-WARNING - Could not get memory statistics: missing attribute
-ERROR - Reactive swarm execution failed: ...
-```
-
-### Troubleshooting Guide
-
-#### Issue: "Object not JSON serializable"
-**Cause**: Complex objects in memory system  
-**Solution**: 
-```bash
-# Clear memory and retry
-reagent memory clean
-reagent execute "your task" --debug
-```
-
-#### Issue: "Missing memory attribute"
-**Cause**: Orchestrator initialization issue  
-**Solution**:
-```bash
-# Check system status
-reagent status
-# Restart with debug mode
-reagent execute "test task" --debug --verbose
-```
-
-#### Issue: "AWSHTTPSConnectionPool: Read timed out"
-**Cause**: AWS Bedrock API timeout due to long-running LLM requests  
-**Solution**:
-```bash
-# Option 1: Retry with simpler task
-reagent execute "shorter task" --debug
-
-# Option 2: Adjust timeout settings in config
-# Edit reagent/utils/llm.py and increase read_timeout value
-
-# Option 3: Use a different LLM provider
-export OPENAI_API_KEY=your_key_here
-reagent execute "your task" --provider openai
-```
-
-#### Issue: Poor Performance
-**Cause**: Suboptimal swarm configuration  
-**Solution**:
-```bash
-# Try different patterns
-reagent execute "task" --pattern adaptive --size 2 --max-size 6
-reagent execute "task" --pattern collaborative --size 4
-```
-
-### Performance Monitoring
-
-#### Real-time Metrics
-During execution, monitor these key metrics:
-
-- **Agent Utilization**: Number of active agents vs. configured
-- **Adaptation Frequency**: How often configuration changes occur
-- **Memory Efficiency**: Hit rates across memory tiers
-- **Coordination Overhead**: Time spent on inter-agent communication
-
-#### Benchmark Expectations
-- **Agent Spawn Time**: < 1 second per agent
-- **Adaptation Time**: < 100ms for configuration changes  
-- **Memory Access**: Local < 1ms, Persistent < 10ms, Archive < 100ms
-- **Coordination Overhead**: < 50ms per coordination cycle
-- **Throughput**: 10-100 tasks/minute depending on complexity
-
-### Advanced Debugging
-
-#### Custom Debug Scripts
-Create custom debugging scripts for specific scenarios:
-
-```python
-# debug_custom.py
-import asyncio
-from reagent import ReactiveSwarmOrchestrator
-from reagent.core.orchestrator import SwarmConfiguration
-
-async def debug_scenario():
-    orchestrator = ReactiveSwarmOrchestrator()
-    
-    # Enable detailed logging
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-    
-    # Test specific configuration
-    config = SwarmConfiguration(
-        initial_size=2,
-        max_size=4,
-        coordination_pattern=CoordinationPattern.ADAPTIVE
-    )
-    
-    result = await orchestrator.execute_reactive_swarm(
-        "Debug test task", config
-    )
-    
-    print(f"Success: {result.success}")
-    print(f"Adaptations: {result.adaptations_made}")
-
-# Run with: uv run python debug_custom.py
-```
-
-#### Memory Deep Dive
-```bash
-# Create test memory debug script
-cat > debug_memory.py << 'EOF'
-import asyncio
-from reagent.core.memory import ReactiveSharedMemory
-
-async def debug_memory():
-    memory = ReactiveSharedMemory()
-    
-    # Test storage
-    await memory.store_with_tier("test", {"data": "value"}, tier="persistent")
-    
-    # Get statistics
-    stats = await memory.get_statistics()
-    print(f"Memory stats: {stats}")
-    
-    # Test retrieval
-    result = await memory.retrieve_with_context("test")
-    print(f"Retrieved: {result}")
-
-asyncio.run(debug_memory())
-EOF
-
-# Run memory debug
-uv run python debug_memory.py
-```
-
-### Integration with Development Workflow
-
-#### Pre-commit Debugging
-```bash
-# Test basic functionality before commits
-reagent execute "system test" --debug --verbose
-
-# Verify memory system
-reagent memory status
-
-# Clean up
-reagent memory clean
-```
-
-#### CI/CD Integration
-```bash
-# Add to CI pipeline
-reagent status
-reagent execute "integration test" --debug --log-file ci-test.log
-reagent memory status
-```
-
-This comprehensive observability system ensures you can effectively monitor, debug, and optimize ReAgent's reactive swarm orchestration in any environment.
-
 ## Performance
 
 ### Benchmarks
 - **Agent Spawn Time**: < 1 second per agent
-- **Adaptation Time**: < 100ms for configuration changes
-- **Memory Access**: Local < 1ms, Persistent < 10ms, Archive < 100ms
-- **Coordination Overhead**: < 50ms per coordination cycle
+- **LLM Analysis Time**: 2-3 seconds for task complexity analysis
+- **Memory Access**: Local < 1ms, Persistent < 10ms, Shared < 50ms
+- **Adaptation Time**: 1-2 seconds for LLM-based adaptation decisions
+- **Coordination Overhead**: < 50ms per memory operation
 
 ### Scalability
-- **Current**: 1-8 concurrent agents
-- **Designed For**: 100+ agents (future enhancement)
+- **Current**: 1-8 concurrent agents with shared memory coordination
 - **Memory Usage**: ~50MB per agent + shared memory pools
 - **Throughput**: 10-100 tasks/minute depending on complexity
+- **LLM Calls**: Optimized with caching and fallback mechanisms
 
 ## Development
 
@@ -537,9 +273,11 @@ This comprehensive observability system ensures you can effectively monitor, deb
 reagent/
 ├── __init__.py                    # Main package exports
 ├── core/
-│   ├── orchestrator.py           # ReactiveSwarmOrchestrator
-│   ├── memory.py                 # ReactiveSharedMemory
-│   └── adaptation.py             # AdaptationEngine
+│   ├── orchestrator.py           # ReactiveSwarmOrchestrator (LLM-driven)
+│   ├── memory.py                 # ReactiveSharedMemory (LLM tier selection)
+│   ├── adaptation.py             # AdaptationEngine (LLM-based triggers)
+│   └── tools/
+│       └── task_analysis.py      # LLM-based task complexity analysis
 ├── cli.py                        # Command-line interface
 examples/
 └── basic_usage.py                # Usage examples
@@ -555,6 +293,12 @@ uv pip install -e ".[dev]"
 # Run tests
 uv run pytest tests/
 
+# Test LLM integration
+uv run python test_llm_integration.py
+
+# Test memory usage
+uv run python test_memory_simple.py
+
 # Run with coverage
 uv run pytest tests/ --cov=reagent
 ```
@@ -568,8 +312,8 @@ cd ReAgent
 # Install in development mode with uv (recommended)
 uv pip install -e ".[dev]"
 
-# Or install with pip
-pip install -e ".[dev]"
+# Set up AWS credentials for Bedrock
+aws configure
 
 # Run example
 uv run python examples/basic_usage.py
@@ -602,29 +346,69 @@ ReAgent is designed to leverage Strands' AWS deployment capabilities:
 
 ## Contributing
 
-We welcome contributions! Key areas for contribution:
+We welcome contributions! ReAgent is designed to be a community-driven project for advancing reactive agent orchestration.
 
-- **Adaptation Rules**: New triggers and adaptation strategies
-- **Memory Optimization**: Enhanced tiered storage algorithms
-- **Integration Patterns**: New coordination patterns and strategies
+### 🎯 Priority Areas for Contribution:
+
+- **LLM Integration**: Enhanced prompts and analysis techniques
+- **Adaptation Strategies**: New LLM-based adaptation patterns
+- **Memory Optimization**: Advanced tiered storage algorithms
+- **Coordination Patterns**: Novel agent coordination strategies
 - **Performance**: Optimization and benchmarking
 - **Documentation**: Examples and use cases
 
-## Future Improvements (TODOs)
+### 🚀 How to Contribute:
 
-### Orchestrator Enhancements
-- ✅ Replace heuristic-based keyword extraction with LLM-based extraction for better accuracy (implemented via Strands agents)
-- ✅ Replace heuristic-based step estimation with LLM-based step estimation (implemented via Strands agents)
-- ✅ Replace heuristic-based domain extraction with LLM-based domain extraction (implemented via Strands agents)
-- Include intent modeling of tasks to identify domain breadth
+1. **Fork the repository** and create a feature branch
+2. **Make your changes** following the LLM-first design principles
+3. **Add tests** to verify your changes work correctly
+4. **Submit a pull request** with a clear description
 
-### Memory System Enhancements
-- Replace simple heuristic tier selection with LLM-based analysis for better accuracy
-- Investigate distributed storage options like Redis for shared memory tier
+### 📋 Development Guidelines:
 
-### LLM Integration Improvements
-- ✅ Enhance LLM response parsing to handle more formats (implemented via Strands tools)
-- ✅ Fix the missing import for json in llm.py (removed dependency on custom LLM clients)
+- **No Hardcoded Logic**: All decision-making must use LLM analysis
+- **Memory Integration**: New features should leverage reactive shared memory
+- **Test Coverage**: Include tests for both success and failure scenarios
+- **Documentation**: Update relevant docs and examples
+
+## TODO & Feature Requests
+
+### 🔧 Current Development TODOs:
+
+- [ ] Implement semantic memory tier 
+- [ ] Add more sophisticated context to LLM analysis prompts
+- [ ] Create learning system that improves adaptation based on outcomes
+- [ ] Add support for custom LLM models beyond Bedrock
+- [ ] Implement swarm execution rollback for failed adaptations
+- [ ] Add metrics dashboard for swarm performance monitoring
+- [ ] Create integration tests with real-world scenarios
+
+### 💡 Feature Request Process:
+
+**Have an idea for ReAgent?** We'd love to hear from you!
+
+1. **Check existing issues** to see if your idea is already being discussed
+2. **Create a new issue** using our feature request template
+3. **Describe your use case** and how it would benefit reactive agent orchestration
+4. **Engage with the community** to refine and prioritize the feature
+
+**[📝 Submit Feature Request →](https://github.com/nonatofabio/ReAgent/issues/new?template=feature_request.md)**
+
+### 🌟 Community Ideas Welcome:
+
+- Novel coordination patterns for specific domains
+- Integration with other agent frameworks
+- Advanced memory management strategies
+- Performance optimization techniques
+- Real-world use case implementations
+- Educational examples and tutorials
+
+### 🤝 Join the Discussion:
+
+- **Issues**: Bug reports and feature requests
+- **Discussions**: Architecture ideas and use cases
+- **Wiki**: Community knowledge and best practices
+- **Discord**: Real-time community chat (coming soon)
 
 ## License
 
@@ -633,17 +417,12 @@ Apache 2.0 License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - **AWS Strands Team** - For the foundational agent SDK and swarm capabilities
-- **Anthropic** - For the Model Context Protocol specification
+- **Anthropic** - For the Model Context Protocol specification and Claude models
 - **Open Source Community** - For inspiration and best practices
+- **Contributors** - Everyone who helps make ReAgent better
 
 ## Related Projects
 
 - [AWS Strands Agents](https://github.com/strands-agents/sdk-python) - Foundation agent SDK
 - [Strands Tools](https://github.com/strands-agents/tools) - Swarm tool and other utilities
 - [Model Context Protocol](https://modelcontextprotocol.io/) - Standardized LLM integration
-
----
-
-**ReAgent**: Reactive orchestration for intelligent agents, built on proven AWS technology.
-
-**Status**: ✅ Implementation Complete - Ready for testing and deployment

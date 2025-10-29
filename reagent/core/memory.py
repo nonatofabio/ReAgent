@@ -343,7 +343,35 @@ class ReactiveSharedMemory:
             }
         }
     
-    # Private helper methods
+    async def clear_all(self) -> Dict[str, Any]:
+        """Clear all memory entries."""
+        try:
+            self.local_cache.clear()
+            
+            # Clear persistent storage
+            if self.memory_dir.exists():
+                for file_path in self.memory_dir.glob("*.json"):
+                    file_path.unlink()
+            
+            return {"success": True, "message": "All memory cleared"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    async def list_all_keys(self) -> List[str]:
+        """List all memory keys across all tiers."""
+        keys = []
+        
+        # Local cache keys
+        keys.extend(self.local_cache.keys())
+        
+        # Persistent storage keys
+        if self.memory_dir.exists():
+            for file_path in self.memory_dir.glob("*.json"):
+                key = file_path.stem
+                if key not in keys:
+                    keys.append(key)
+        
+        return keys
     
     def _determine_optimal_tier(self, key: str, value: Any) -> MemoryTier:
         """Determine optimal storage tier using LLM analysis."""

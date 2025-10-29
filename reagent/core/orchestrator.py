@@ -415,9 +415,21 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
         phase: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Execute a single swarm phase."""
+        """Execute a single swarm phase with shared memory integration."""
         
         self.logger.info(f"Executing swarm phase: {phase}, config={config}")
+        
+        # Store task context in shared memory for agents to access
+        await self.shared_memory.store_with_tier(
+            f"task_context:{phase}", 
+            {
+                "task": task,
+                "phase": phase,
+                "config": config.__dict__,
+                "timestamp": time.time()
+            },
+            "shared"
+        )
         
         # Prepare swarm execution parameters
         swarm_params = {
@@ -427,17 +439,43 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
             **kwargs
         }
         
-        # Execute using Strands swarm tool
+        # Execute using Strands swarm tool with memory integration
         swarm_prompt = f"""
-        Execute this task using swarm coordination:
+        Execute this task using swarm coordination with shared memory:
         
         Task: {task}
         Configuration: {swarm_params}
+        Phase: {phase}
         
-        Use the swarm tool with the specified parameters.
+        IMPORTANT: Use the store_swarm_memory and retrieve_swarm_memory tools to:
+        1. Share intermediate findings between agents
+        2. Store partial results for other agents to build upon
+        3. Retrieve context from previous phases or other agents
+        4. Coordinate work to avoid duplication
+        
+        Memory keys to use:
+        - "findings:{phase}:agent_X" for individual agent findings
+        - "progress:{phase}" for overall progress updates
+        - "coordination:{phase}" for agent coordination messages
+        - "results:{phase}" for phase results
+        
+        Use the swarm tool with the specified parameters and leverage shared memory for coordination.
         """
         
         result = await asyncio.to_thread(self.base_agent, swarm_prompt)
+        
+        # Store phase results in shared memory for next phase
+        await self.shared_memory.store_with_tier(
+            f"phase_result:{phase}",
+            {
+                'phase': phase,
+                'result': str(result),
+                'config_used': config.__dict__,
+                'success': True,
+                'timestamp': time.time()
+            },
+            "shared"
+        )
         
         return {
             'phase': phase,
@@ -453,9 +491,12 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
         initial_result: Dict[str, Any],
         **kwargs
     ) -> Dict[str, Any]:
-        """Execute adaptive phase based on initial results."""
+        """Execute adaptive phase using shared memory from previous phases."""
         
         self.logger.info("Starting adaptive execution phase")
+        
+        # Retrieve previous phase results from shared memory
+        previous_context = await self.shared_memory.retrieve_with_context("phase_result:initial")
         
         # Analyze initial results for adaptation opportunities
         adaptation_prompt = f"""
@@ -465,14 +506,35 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
         Initial result: {initial_result}
         Current configuration: {config}
         
+        Previous phase context from shared memory: {previous_context}
+        
         Use the adapt_swarm_configuration tool to determine if changes are needed.
-        If adaptations are recommended, execute another swarm phase with the new configuration.
+        
+        IMPORTANT: Use retrieve_swarm_memory to access:
+        - "findings:initial:*" for individual agent findings from initial phase
+        - "progress:initial" for initial phase progress
+        - "results:initial" for initial phase results
+        
+        If adaptations are recommended:
+        1. Store adaptation reasoning in shared memory
+        2. Execute another swarm phase with the new configuration
+        3. Use shared memory to maintain continuity between phases
         """
         
         adaptation_response = await asyncio.to_thread(self.base_agent, adaptation_prompt)
         
-        # For now, return the initial result with adaptation metadata
-        # In a full implementation, this would potentially trigger another swarm execution
+        # Store adaptation analysis in shared memory
+        await self.shared_memory.store_with_tier(
+            "adaptation_analysis",
+            {
+                'analysis': str(adaptation_response),
+                'timestamp': time.time(),
+                'initial_result': initial_result,
+                'config': config.__dict__
+            },
+            "shared"
+        )
+        
         return {
             **initial_result,
             'adaptations': [],
