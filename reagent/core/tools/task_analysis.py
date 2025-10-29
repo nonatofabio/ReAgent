@@ -30,9 +30,84 @@ def analyze_task_complexity(task: str) -> Dict[str, Any]:
     Returns:
         Dict containing complexity analysis and recommendations
     """
-    # The implementation will be handled by the Strands agent
-    # This is just a tool definition that will be registered with the agent
-    pass
+    # Use LLM-based analysis directly in the tool
+    try:
+        from strands import Agent
+        from strands.models import BedrockModel
+        import json
+        import re
+        
+        # Create agent for analysis
+        model = BedrockModel(
+            model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+            region_name="us-west-2"
+        )
+        
+        agent = Agent(
+            model=model,
+            system_prompt="You are a task complexity analyzer. Analyze tasks and provide structured complexity assessments."
+        )
+        
+        analysis_prompt = f"""
+        Analyze this task for complexity and provide a JSON response with the following structure:
+        {{
+            "complexity_score": <number 1-10>,
+            "complexity_level": "<low|medium|high>",
+            "recommended_swarm_size": <number 1-8>,
+            "recommended_pattern": "<collaborative|competitive|adaptive>",
+            "steps": [
+                {{"description": "<step description>", "estimated_time_minutes": <number>}}
+            ],
+            "domains": [
+                {{"domain": "<domain name>", "relevance": <0-1>, "complexity": <0-1>}}
+            ],
+            "reasoning": "<explanation of analysis>",
+            "recommendations": ["<recommendation 1>", "<recommendation 2>"]
+        }}
+        
+        Task to analyze: {task}
+        
+        Consider:
+        - Number of distinct subtasks required
+        - Domain expertise needed
+        - Coordination complexity
+        - Time sensitivity
+        - Quality requirements
+        
+        Respond with only the JSON structure.
+        """
+        
+        response = agent(analysis_prompt)
+        
+        # Extract JSON from response
+        json_pattern = r'```json\s*(.*?)\s*```'
+        match = re.search(json_pattern, str(response), re.DOTALL)
+        
+        if match:
+            analysis_json = match.group(1)
+        else:
+            # Try to find JSON in the response
+            json_start = str(response).find('{')
+            json_end = str(response).rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                analysis_json = str(response)[json_start:json_end]
+            else:
+                raise ValueError("No JSON found in response")
+        
+        analysis = json.loads(analysis_json)
+        
+        # Validate required fields
+        required_fields = ['complexity_score', 'complexity_level', 'recommended_swarm_size', 'recommended_pattern']
+        for field in required_fields:
+            if field not in analysis:
+                raise ValueError(f"Missing required field: {field}")
+        
+        return analysis
+        
+    except Exception as e:
+        logger.error(f"Task complexity analysis failed: {str(e)}")
+        # Return fallback analysis
+        return generate_fallback_analysis(task)
 
 def extract_and_validate_analysis(response: str) -> Dict[str, Any]:
     """
