@@ -54,7 +54,7 @@ def execute(
         force=True  # Override any existing configuration
     )
     
-    logger = logging.getLogger('reagent')
+    logger = logging.getLogger()
     logger.info(f"Starting ReAgent execution: {task}")
     
     console.print(Panel.fit(
@@ -326,7 +326,7 @@ async def _execute_task(
 ) -> dict:
     """Execute a task asynchronously."""
     
-    logger = logging.getLogger('reagent')
+    logger = logging.getLogger()
     
     try:
         # Create swarm configuration
@@ -348,9 +348,7 @@ async def _execute_task(
         ) as progress:
             init_task = progress.add_task("Initializing ReactiveSwarmOrchestrator...", total=None)
             
-            orchestrator = ReactiveSwarmOrchestrator(
-                system_prompt="You are executing a user task with reactive swarm coordination."
-            )
+            orchestrator = ReactiveSwarmOrchestrator()
             
             logger.info("ReactiveSwarmOrchestrator initialized")
             progress.update(init_task, completed=True)

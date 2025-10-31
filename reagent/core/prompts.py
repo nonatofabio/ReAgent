@@ -19,7 +19,7 @@ Provide a detailed analysis with the following:
 8. Recommendations for execution
 
 Your response should be in JSON format with the following structure:
-```json
+<analyze_task_complexity>
 {{
   "complexity_score": 5.5,
   "complexity_level": "medium",
@@ -55,126 +55,16 @@ Your response should be in JSON format with the following structure:
     "Focus on technical expertise"
   ]
 }}
-```
-
-Examples:
-
-Example 1:
-Task: "Write a simple Python function to calculate the factorial of a number"
-Analysis:
-```json
-{{
-  "complexity_score": 2.0,
-  "complexity_level": "low",
-  "recommended_swarm_size": 1,
-  "recommended_pattern": "collaborative",
-  "steps": [
-    {{
-      "description": "Understand factorial calculation",
-      "estimated_time_minutes": 5,
-      "complexity": 0.2
-    }},
-    {{
-      "description": "Write Python function",
-      "estimated_time_minutes": 10,
-      "complexity": 0.3
-    }},
-    {{
-      "description": "Test and validate",
-      "estimated_time_minutes": 5,
-      "complexity": 0.2
-    }}
-  ],
-  "domains": [
-    {{
-      "domain": "technical",
-      "relevance": 0.9,
-      "complexity": 0.2
-    }}
-  ],
-  "reasoning": "This is a simple programming task requiring basic Python knowledge. The factorial algorithm is straightforward and can be implemented with a simple recursive or iterative approach. No complex logic or domain knowledge is required.",
-  "recommendations": [
-    "Use 1 agent with collaborative pattern",
-    "Focus on clean, efficient implementation",
-    "Include both recursive and iterative approaches"
-  ]
-}}
-```
-
-Example 2:
-Task: "Research and analyze the impact of AI on job markets across different industries, and provide policy recommendations"
-Analysis:
-```json
-{{
-  "complexity_score": 8.5,
-  "complexity_level": "high",
-  "recommended_swarm_size": 5,
-  "recommended_pattern": "adaptive",
-  "steps": [
-    {{
-      "description": "Define research scope and methodology",
-      "estimated_time_minutes": 30,
-      "complexity": 0.7
-    }},
-    {{
-      "description": "Research AI impact across industries",
-      "estimated_time_minutes": 90,
-      "complexity": 0.9
-    }},
-    {{
-      "description": "Analyze job market trends",
-      "estimated_time_minutes": 60,
-      "complexity": 0.8
-    }},
-    {{
-      "description": "Identify policy implications",
-      "estimated_time_minutes": 45,
-      "complexity": 0.8
-    }},
-    {{
-      "description": "Develop policy recommendations",
-      "estimated_time_minutes": 60,
-      "complexity": 0.9
-    }},
-    {{
-      "description": "Synthesize findings and create report",
-      "estimated_time_minutes": 45,
-      "complexity": 0.7
-    }}
-  ],
-  "domains": [
-    {{
-      "domain": "research",
-      "relevance": 0.9,
-      "complexity": 0.8
-    }},
-    {{
-      "domain": "analytical",
-      "relevance": 0.9,
-      "complexity": 0.8
-    }},
-    {{
-      "domain": "business",
-      "relevance": 0.7,
-      "complexity": 0.7
-    }},
-    {{
-      "domain": "technical",
-      "relevance": 0.6,
-      "complexity": 0.7
-    }}
-  ],
-  "reasoning": "This task requires extensive research across multiple domains, complex analysis of trends and impacts, and the development of nuanced policy recommendations. It involves understanding AI technology, labor economics, industry-specific factors, and policy frameworks. The breadth and depth of knowledge required, along with the need for synthesis across domains, makes this a high-complexity task.",
-  "recommendations": [
-    "Use 5 agents with adaptive pattern",
-    "Assign specialized roles: researcher, analyst, policy expert, industry specialist, and synthesizer",
-    "Implement collaborative research phase followed by competitive policy recommendation phase",
-    "Allocate more resources to research and analysis steps"
-  ]
-}}
-```
+</analyze_task_complexity>
 
 Now analyze the task provided and return your analysis in the specified JSON format.
+
+Rules:
+- You MUST return only the json output.
+- You MUST wrap your json output in <analyze_task_complexity></analyze_task_complexity> tags
+- NEVER extend your reasoning beyond necessary.
+- You are FORBIDEN from returning anything but the json.
+
 """
 
 # Keyword extraction prompt
@@ -289,6 +179,76 @@ Size: 15000 bytes
 Now analyze the provided information and return your tier selection in the specified JSON format.
 """
 
+# Swarm orchestrator system prompt with tool enforcement
+SWARM_ORCHESTRATOR_SYSTEM_PROMPT = """You are a Reactive Swarm Orchestrator powered by AWS Strands Agents.
+
+Your role is to:
+1. Analyze complex tasks and determine optimal swarm configuration using tools available to you
+2. Coordinate multiple specialized agents working together, don't do the work yourself
+3. Adapt swarm behavior based on intermediate results and changing conditions, make sure to consult memory states to adapt.
+5. Ensure high-quality outcomes through collaborative intelligence, and always provide the user request output 
+
+You have access to:
+- Swarm coordination tools for managing multiple agents
+- Reactive adaptation capabilities for real-time optimization
+- Shared memory systems for knowledge persistence
+- Pattern switching for different coordination strategies
+- MCP tools for extended capabilities (when available)
+
+CRITICAL TOOL USAGE RULES:
+1. When tools are available, you MUST use them - NEVER simulate or describe tool usage
+2. If a task requires external information, you MUST call the appropriate tool (search, read_webpage, etc.)
+3. FORBIDDEN: Writing pseudo-code showing what you "would" do
+4. FORBIDDEN: Describing tool usage without actually invoking the tool
+5. FORBIDDEN: Using pre-trained knowledge when external tools are available for that information
+6. REQUIRED: All research, data gathering, or external information retrieval MUST use actual tool calls
+7. REQUIRED: Log all tool invocations explicitly
+
+When executing with swarm tool:
+- The swarm tool creates actual agent instances that work concurrently
+- Each agent should use available tools as needed for their assigned work
+- Agents must share real results (from actual tool calls) via shared memory
+- Coordinate work to avoid duplication while ensuring all agents use tools when appropriate
+
+Always consider:
+- Task complexity when determining swarm size
+- Which available tools are needed for the task
+- Intermediate results when adapting coordination patterns
+- Quality of collaborative outcomes
+- Actual tool invocation for any external information needs
+
+Be adaptive, efficient, and focused on achieving the best possible results through intelligent swarm coordination and ACTUAL tool usage."""
+
+# Agent execution prompt with tool usage enforcement
+AGENT_EXECUTION_PROMPT = """You are an agent in a reactive swarm executing a task collaboratively.
+
+CRITICAL RULES FOR TOOL USAGE:
+1. You MUST use available tools - DO NOT simulate or describe their usage
+2. When you need information:
+   - Check if a tool exists for that information (search, read_webpage, database_query, etc.)
+   - If yes: INVOKE the tool and use its actual results
+   - If no: provide feedback to the user about what type of tool you need to complete the task
+3. NEVER write pseudo-code showing what you would do - ACT, don't describe
+4. NEVER say "I would call tool X" - ACTUALLY CALL tool X
+5. Store REAL results from ACTUAL tool calls in shared memory
+
+Your responsibilities:
+- Use shared memory to coordinate with other agents
+- Check what other agents have already done (retrieve_swarm_memory)
+- Perform your assigned work using ACTUAL tool calls when needed
+- Store your findings in shared memory (store_swarm_memory) for other agents
+- Avoid duplicating work already completed by other agents
+- Use tools to gather real, current information when required
+- And MOST IMPORTANT: relay the final answer to the user
+
+Available tools include:
+{available_tools}
+
+Task: {task}
+Your role: {agent_role}
+Phase: {phase}
+"""
+
 # Class for accessing prompt templates
 class PromptTemplates:
     """Class for accessing prompt templates."""
@@ -311,4 +271,19 @@ class PromptTemplates:
             content=content,
             access_pattern=access_pattern,
             size_bytes=size_bytes
+        )
+    
+    @staticmethod
+    def swarm_orchestrator_system() -> str:
+        """Get swarm orchestrator system prompt with tool enforcement."""
+        return SWARM_ORCHESTRATOR_SYSTEM_PROMPT
+    
+    @staticmethod
+    def agent_execution(task: str, agent_role: str, phase: str, available_tools: str) -> str:
+        """Get agent execution prompt with tool usage enforcement."""
+        return AGENT_EXECUTION_PROMPT.format(
+            task=task,
+            agent_role=agent_role,
+            phase=phase,
+            available_tools=available_tools
         )

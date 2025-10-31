@@ -17,6 +17,7 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 try:
     from strands_tools import swarm
+    from strands_tools.swarm import Swarm
     SWARM_AVAILABLE = True
 except ImportError:
     SWARM_AVAILABLE = False
@@ -86,7 +87,7 @@ class ReactiveSwarmOrchestrator:
         tools: Optional[List[Any]] = None,
         mcp_transport_callable: Optional[Callable[[], MCPTransport]] = None  # Deprecated, kept for backward compatibility
     ):
-        self.logger = logging.getLogger(f"{__name__}.ReactiveSwarmOrchestrator")
+        self.logger = logging.getLogger()
         
         # Initialize Strands agent with swarm capability
         if not SWARM_AVAILABLE:
@@ -98,18 +99,23 @@ class ReactiveSwarmOrchestrator:
         # Default to Bedrock Claude if no model specified
         if model is None:
             model = BedrockModel(
-                model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+                model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
                 region_name="us-west-2"
             )
+        
+        # Store model for agent creation
+        self.model = model
         
         # Default system prompt for reactive orchestration
         if system_prompt is None:
             system_prompt = self._get_default_system_prompt()
         
+        self.logger.debug(f"Using system prompt: {system_prompt[:100]}...")
+        
         # Initialize MCP client - simplified approach using standard configuration
         self.mcp_client = None
         self.mcp_tools = []
-        
+        self.logger.info(f"ReactiveSwarmOrchestrator model initialized")
         # Prefer standard MCP configuration over deprecated transport callable
         if mcp_config_path:
             self._initialize_mcp_from_config(mcp_config_path)
@@ -119,12 +125,13 @@ class ReactiveSwarmOrchestrator:
             self._initialize_mcp_from_transport(mcp_transport_callable)
         
         # Create base agent with swarm tool and MCP tools
+        tools = [swarm] + self._create_reactive_tools() + self.mcp_tools + (tools if tools else [])
         self.base_agent = Agent(
             model=model,
-            tools=[swarm] + self._create_reactive_tools() + self.mcp_tools + tools if tools else [],
+            tools=tools,
             system_prompt=system_prompt
         )
-        
+        self.logger.info(f"Base agent created with {len(tools)} tools")
         # Initialize reactive components
         self.shared_memory = ReactiveSharedMemory()
         self.memory = self.shared_memory  # Alias for CLI compatibility
@@ -191,30 +198,8 @@ class ReactiveSwarmOrchestrator:
     
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for reactive orchestration."""
-        return """You are a Reactive Swarm Orchestrator powered by AWS Strands Agents.
-
-Your role is to:
-1. Analyze complex tasks and determine optimal swarm configuration
-2. Coordinate multiple specialized agents working together
-3. Adapt swarm behavior based on intermediate results and changing conditions
-4. Optimize resource usage and task distribution dynamically
-5. Ensure high-quality outcomes through collaborative intelligence
-
-You have access to:
-- Swarm coordination tools for managing multiple agents
-- Reactive adaptation capabilities for real-time optimization
-- Shared memory systems for knowledge persistence
-- Pattern switching for different coordination strategies
-- MCP tools for extended capabilities (when available)
-
-Always consider:
-- Task complexity when determining swarm size
-- Intermediate results when adapting coordination patterns
-- Resource efficiency and execution time
-- Quality of collaborative outcomes
-- Appropriate MCP tools for specialized tasks
-
-Be adaptive, efficient, and focused on achieving the best possible results through intelligent swarm coordination."""
+        from .prompts import PromptTemplates
+        return PromptTemplates.swarm_orchestrator_system()
     
     def _create_reactive_tools(self) -> List[Any]:
         """Create ReAgent-specific tools for reactive capabilities."""
@@ -243,12 +228,38 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
         @tool
         def store_swarm_memory(key: str, value: Any, tier: str = "auto") -> Dict[str, Any]:
             """Store information in reactive shared memory."""
-            return self.shared_memory.store_with_tier(key, value, tier)
+            # Run async method synchronously
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is running, create a task and wait for it
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, self.shared_memory.store_with_tier(key, value, tier))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self.shared_memory.store_with_tier(key, value, tier))
+            except RuntimeError:
+                # No event loop, create one
+                return asyncio.run(self.shared_memory.store_with_tier(key, value, tier))
         
         @tool
         def retrieve_swarm_memory(key: str, include_history: bool = False) -> Dict[str, Any]:
             """Retrieve information from reactive shared memory."""
-            return self.shared_memory.retrieve_with_context(key, include_history)
+            # Run async method synchronously
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is running, create a task and wait for it
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, self.shared_memory.retrieve_with_context(key, include_history))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self.shared_memory.retrieve_with_context(key, include_history))
+            except RuntimeError:
+                # No event loop, create one
+                return asyncio.run(self.shared_memory.retrieve_with_context(key, include_history))
         
         return [
             analyze_task_complexity,
@@ -291,14 +302,8 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
                 task, optimized_config, phase="initial", **kwargs
             )
             
-            # Phase 3: Reactive adaptation based on results
-            if config.enable_reactive_adaptation:
-                adapted_result = await self._adaptive_execution_phase(
-                    task, optimized_config, initial_result, **kwargs
-                )
-                final_result = adapted_result
-            else:
-                final_result = initial_result
+            # Skip adaptation phase - return initial result directly
+            final_result = initial_result
             
             # Phase 4: Finalize and store results
             execution_time = time.time() - start_time
@@ -369,7 +374,7 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
             import json
             
             # Look for tool result in the response
-            tool_result_pattern = r'analyze_task_complexity.*?```json\s*(.*?)\s*```'
+            tool_result_pattern = r'<analyze_task_complexity>\s*(.*?)\s*</analyze_task_complexity>'
             match = re.search(tool_result_pattern, str(analysis_response), re.DOTALL)
             
             if match:
@@ -439,37 +444,28 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
             **kwargs
         }
         
-        # Execute using Strands swarm tool with memory integration
+        # Build tool availability message
+        mcp_tool_count = len(self.mcp_tools) if self.mcp_tools else 0
+        tool_availability_msg = f"You have {mcp_tool_count} MCP tools available including search, read_webpage, and others" if mcp_tool_count > 0 else "Limited tools available"
+        
+        # Execute using the actual Strands swarm tool
         swarm_prompt = f"""
-        Execute this task using swarm coordination with shared memory:
+        {task}
         
-        Task: {task}
-        Configuration: {swarm_params}
-        Phase: {phase}
-        
-        IMPORTANT: Use the store_swarm_memory and retrieve_swarm_memory tools to:
-        1. Share intermediate findings between agents
-        2. Store partial results for other agents to build upon
-        3. Retrieve context from previous phases or other agents
-        4. Coordinate work to avoid duplication
-        
-        Memory keys to use:
-        - "findings:{phase}:agent_X" for individual agent findings
-        - "progress:{phase}" for overall progress updates
-        - "coordination:{phase}" for agent coordination messages
-        - "results:{phase}" for phase results
-        
-        Use the swarm tool with the specified parameters and leverage shared memory for coordination.
+        Use {config.initial_size} agents working collaboratively.
+        Use store_swarm_memory and retrieve_swarm_memory tools to coordinate between agents.
         """
         
+        # Use the actual swarm tool via the base agent
         result = await asyncio.to_thread(self.base_agent, swarm_prompt)
+        content = str(result)
         
         # Store phase results in shared memory for next phase
         await self.shared_memory.store_with_tier(
             f"phase_result:{phase}",
             {
                 'phase': phase,
-                'result': str(result),
+                'result': content,
                 'config_used': config.__dict__,
                 'success': True,
                 'timestamp': time.time()
@@ -479,7 +475,7 @@ Be adaptive, efficient, and focused on achieving the best possible results throu
         
         return {
             'phase': phase,
-            'result': result,
+            'result': content,
             'config_used': config,
             'success': True  # Would be determined from actual result parsing
         }

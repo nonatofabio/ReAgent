@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 
 from strands import tool
 from ..models import TaskComplexityAnalysis
-from ..prompts import TASK_COMPLEXITY_ANALYSIS_PROMPT
+from ..prompts import PromptTemplates
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def analyze_task_complexity(task: str) -> Dict[str, Any]:
         
         # Create agent for analysis
         model = BedrockModel(
-            model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+            model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
             region_name="us-west-2"
         )
         
@@ -48,34 +48,7 @@ def analyze_task_complexity(task: str) -> Dict[str, Any]:
             system_prompt="You are a task complexity analyzer. Analyze tasks and provide structured complexity assessments."
         )
         
-        analysis_prompt = f"""
-        Analyze this task for complexity and provide a JSON response with the following structure:
-        {{
-            "complexity_score": <number 1-10>,
-            "complexity_level": "<low|medium|high>",
-            "recommended_swarm_size": <number 1-8>,
-            "recommended_pattern": "<collaborative|competitive|adaptive>",
-            "steps": [
-                {{"description": "<step description>", "estimated_time_minutes": <number>}}
-            ],
-            "domains": [
-                {{"domain": "<domain name>", "relevance": <0-1>, "complexity": <0-1>}}
-            ],
-            "reasoning": "<explanation of analysis>",
-            "recommendations": ["<recommendation 1>", "<recommendation 2>"]
-        }}
-        
-        Task to analyze: {task}
-        
-        Consider:
-        - Number of distinct subtasks required
-        - Domain expertise needed
-        - Coordination complexity
-        - Time sensitivity
-        - Quality requirements
-        
-        Respond with only the JSON structure.
-        """
+        analysis_prompt = PromptTemplates.task_complexity_analysis(task)
         
         response = agent(analysis_prompt)
         
