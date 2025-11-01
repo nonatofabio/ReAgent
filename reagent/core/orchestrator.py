@@ -267,6 +267,38 @@ class ReactiveSwarmOrchestrator:
             store_swarm_memory,
             retrieve_swarm_memory
         ]
+    def _format_tool_context(self) -> str:
+        """Format available tools for agent awareness."""
+        
+        tool_descriptions = []
+        
+        # Memory tools (ReAgent value-add)
+        tool_descriptions.append("""
+Memory Coordination Tools (for agent collaboration):
+- store_swarm_memory(key, value, tier="auto"): Save findings for other agents
+- retrieve_swarm_memory(key, include_history=False): Access shared data
+- Use keys like: "findings:agent_X", "progress", "results"
+""")
+        
+        # MCP tools (if available)
+        if self.mcp_tools:
+            mcp_names = [t.__name__ if hasattr(t, '__name__') else 'mcp_tool' 
+                         for t in self.mcp_tools[:5]]  # First 5
+            tool_descriptions.append(f"""
+External Research Tools (via MCP):
+- {', '.join(mcp_names)}
+- Use these for current information, web search, etc.
+""")
+        
+        # Strands native tools
+        tool_descriptions.append("""
+Swarm Coordination Tools (native to strands):
+- handoff_to_agent(agent_name, context): Transition work to another agent
+- complete_swarm_task(result): Deliver final result when done
+""")
+        
+        return "\n".join(tool_descriptions)
+    
     
     async def execute_reactive_swarm(
         self,
@@ -275,70 +307,69 @@ class ReactiveSwarmOrchestrator:
         **kwargs
     ) -> SwarmResult:
         """
-        Execute a task using reactive swarm orchestration.
+        Execute task using hybrid ReAgent intelligence + Strands execution.
         
-        Args:
-            task: The task to execute
-            config: Swarm configuration (uses defaults if not provided)
-            **kwargs: Additional parameters passed to the swarm tool
-            
-        Returns:
-            SwarmResult with execution details and adaptations
+        ReAgent provides:
+        - Task complexity analysis
+        - Custom agent role specifications
+        - Tool context and coordination strategy
+        
+        Strands provides:
+        - Agent creation and management
+        - Coordination via handoff_to_agent
+        - Final delivery via complete_swarm_task
         """
         start_time = time.time()
         
         if config is None:
             config = SwarmConfiguration()
         
-        self.logger.info(f"Starting reactive swarm execution: task={task}, config={config}")
+        self.logger.info(f"Starting ReAgent execution: {task}")
         
         try:
-            # Phase 1: Initial task analysis and configuration
+            # Phase 1: Intelligence Layer (ReAgent's value)
             analysis_result = await self._analyze_task_and_configure(task, config)
             optimized_config = analysis_result['optimized_config']
             
-            # Phase 2: Execute swarm with initial configuration
-            initial_result = await self._execute_swarm_phase(
-                task, optimized_config, phase="initial", **kwargs
+            # Extract task analysis
+            analysis = self._extract_analysis_from_response(analysis_result['analysis'])
+            
+            # Generate specialized agent roles based on analysis
+            agent_roles = await self._generate_agent_role_specifications(task, analysis)
+            self.logger.info(f"Generated {optimized_config.initial_size} specialized agent roles")
+            
+            # Phase 2: Execution Layer (Delegate to Strands)
+            result = await self._execute_swarm_phase(
+                task,
+                optimized_config,
+                analysis,
+                agent_roles,
+                **kwargs
             )
             
-            # Skip adaptation phase - return initial result directly
-            final_result = initial_result
-            
-            # Phase 4: Finalize and store results
-            execution_time = time.time() - start_time
-            
+            # Package results
             swarm_result = SwarmResult(
-                success=final_result.get('success', True),
-                content=final_result.get('content', final_result),
-                execution_time=execution_time,
-                agents_used=final_result.get('agents_used', optimized_config.initial_size),
-                adaptations_made=len(final_result.get('adaptations', [])),
-                final_configuration=optimized_config,
-                adaptation_history=final_result.get('adaptation_history', [])
+                success=True,
+                content=result['result'],
+                execution_time=time.time() - start_time,
+                agents_used=optimized_config.initial_size,
+                adaptations_made=0,
+                final_configuration=optimized_config
             )
             
-            # Store in execution history
+            # Store for learning
             self.execution_history.append(swarm_result)
-            
-            # Store in shared memory for future reference
             await self.shared_memory.store_execution_result(task, swarm_result)
             
-            self.logger.info(
-                f"Reactive swarm execution completed: success={swarm_result.success}, "
-                f"execution_time={execution_time}, adaptations={swarm_result.adaptations_made}"
-            )
-            
+            self.logger.info(f"Execution completed: {swarm_result.execution_time:.2f}s")
             return swarm_result
             
         except Exception as e:
-            execution_time = time.time() - start_time
-            self.logger.error(f"Reactive swarm execution failed: error={str(e)}")
-            
+            self.logger.error(f"Execution failed: {str(e)}")
             return SwarmResult(
                 success=False,
                 content=f"Execution failed: {str(e)}",
-                execution_time=execution_time,
+                execution_time=time.time() - start_time,
                 agents_used=0,
                 adaptations_made=0,
                 final_configuration=config
@@ -365,183 +396,201 @@ class ReactiveSwarmOrchestrator:
         
         analysis_response = await asyncio.to_thread(self.base_agent, analysis_prompt)
         
-        # Extract configuration recommendations from the analysis response
+        # Extract configuration recommendations using refactored method
+        optimized_config = self._extract_and_apply_analysis(analysis_response, base_config)
+        
+        return {
+            'analysis': analysis_response,
+            'optimized_config': optimized_config
+        }
+    def _extract_and_apply_analysis(
+        self, response, base_config: SwarmConfiguration
+    ) -> SwarmConfiguration:
+        """
+        Extract task complexity analysis from agent response and apply it to configuration.
+        
+        Tries multiple extraction strategies in order:
+        1. Extract from Strands response object attributes (.content, .text)
+        2. Look for tool result XML tags
+        3. Search for JSON blocks in markdown
+        4. Find raw JSON in response text
+        
+        Args:
+            response: Agent response (may be Strands response object or string)
+            base_config: Base configuration to use as fallback
+            
+        Returns:
+            Optimized SwarmConfiguration based on analysis, or base_config if extraction fails
+        """
+        import re
+        import json
         from .models import TaskComplexityAnalysis
         
+        analysis_data = None
+        response_text = None
+        
         try:
-            # Try to extract the tool result from the response
-            import re
-            import json
+            # Step 1: Extract text from Strands response object
+            if hasattr(response, 'content'):
+                response_text = str(response.content)
+            elif hasattr(response, 'text'):
+                response_text = str(response.text)
+            elif hasattr(response, 'message'):
+                response_text = str(response.message)
+            else:
+                response_text = str(response)
             
-            # Look for tool result in the response
-            tool_result_pattern = r'<analyze_task_complexity>\s*(.*?)\s*</analyze_task_complexity>'
-            match = re.search(tool_result_pattern, str(analysis_response), re.DOTALL)
+            self.logger.debug(f"Response text for analysis extraction: {response_text[:500]}...")
             
-            if match:
-                # Parse the JSON from the tool result
-                analysis_data = json.loads(match.group(1))
+            # Step 2: Try multiple extraction patterns
+            extraction_attempts = [
+                # Pattern 1: XML-style tool result tags
+                (r'<analyze_task_complexity[^>]*>\s*({.*?})\s*</analyze_task_complexity>', "XML tool tags"),
+                # Pattern 2: JSON in markdown code blocks
+                (r'```json\s*({.*?})\s*```', "JSON markdown block"),
+                # Pattern 3: Raw JSON object
+                (r'({[\s\S]*?"complexity_score"[\s\S]*?"recommended_pattern"[\s\S]*?})', "Raw JSON"),
+            ]
+            
+            for pattern, description in extraction_attempts:
+                match = re.search(pattern, response_text, re.DOTALL | re.IGNORECASE)
+                if match:
+                    try:
+                        analysis_data = json.loads(match.group(1))
+                        self.logger.debug(f"Successfully extracted analysis using: {description}")
+                        break
+                    except json.JSONDecodeError as e:
+                        self.logger.debug(f"Failed to parse JSON from {description}: {e}")
+                        continue
+            
+            # Step 3: If no patterns matched, try finding JSON boundaries
+            if not analysis_data:
+                json_start = response_text.find('{')
+                json_end = response_text.rfind('}') + 1
+                if json_start != -1 and json_end > json_start:
+                    try:
+                        potential_json = response_text[json_start:json_end]
+                        analysis_data = json.loads(potential_json)
+                        self.logger.debug("Successfully extracted analysis from JSON boundaries")
+                    except json.JSONDecodeError as e:
+                        self.logger.debug(f"Failed to parse JSON from boundaries: {e}")
+            
+            # Step 4: Validate and apply analysis
+            if analysis_data:
                 analysis = TaskComplexityAnalysis(**analysis_data)
                 
-                # Create optimized configuration based on analysis
+                # Create optimized configuration
                 optimized_config = SwarmConfiguration(
-                    initial_size=min(base_config.max_size, max(base_config.min_size, analysis.recommended_swarm_size)),
+                    initial_size=min(
+                        base_config.max_size,
+                        max(base_config.min_size, analysis.recommended_swarm_size)
+                    ),
                     max_size=base_config.max_size,
                     min_size=base_config.min_size,
-                    coordination_pattern=getattr(CoordinationPattern, analysis.recommended_pattern.upper(), base_config.coordination_pattern),
+                    coordination_pattern=getattr(
+                        CoordinationPattern,
+                        analysis.recommended_pattern.upper(),
+                        base_config.coordination_pattern
+                    ),
                     adaptation_triggers=base_config.adaptation_triggers,
                     timeout_seconds=base_config.timeout_seconds,
                     enable_reactive_adaptation=base_config.enable_reactive_adaptation
                 )
                 
                 self.logger.info(
-                    f"Task complexity analysis: score={analysis.complexity_score}, "
+                    f"Task complexity analysis applied: "
+                    f"score={analysis.complexity_score}, "
                     f"level={analysis.complexity_level}, "
                     f"recommended_size={analysis.recommended_swarm_size}, "
                     f"pattern={analysis.recommended_pattern}"
                 )
+                
+                return optimized_config
             else:
-                # Fallback to default configuration if no tool result found
-                self.logger.warning("Could not extract task complexity analysis from response")
-                optimized_config = base_config
+                # No analysis data found - use base config silently
+                self.logger.debug("No task complexity analysis found in response, using base configuration")
+                return base_config
+                
         except Exception as e:
-            # Log the error and fall back to the base configuration
-            self.logger.error(f"Failed to parse task complexity analysis: {str(e)}")
-            optimized_config = base_config
+            # Log error and fall back to base configuration
+            self.logger.debug(f"Error during analysis extraction: {str(e)}, using base configuration")
+            return base_config
+    
+    async def _generate_agent_role_specifications(
+        self,
+        task: str,
+        analysis: 'TaskComplexityAnalysis'
+    ) -> str:
+        """Generate specialized agent role descriptions based on task analysis."""
         
-        return {
-            'analysis': analysis_response,
-            'optimized_config': optimized_config
-        }
+        role_prompt = f"""
+Based on this task analysis, generate {analysis.recommended_swarm_size} specialized agent roles:
+
+Task: {task}
+Complexity: {analysis.complexity_level}
+Domains: {[d['domain'] for d in analysis.domains]}
+
+For each agent, provide:
+1. Role name (e.g., "Research Specialist", "Analysis Expert")
+2. Primary responsibilities (what they focus on)
+3. What they should NOT do (boundaries)
+4. Coordination notes (how they work with others)
+
+Format as clear, structured text that will be passed to strands.swarm.
+"""
+        
+        result = await asyncio.to_thread(self.base_agent, role_prompt)
+        return str(result)
     
     async def _execute_swarm_phase(
         self,
         task: str,
         config: SwarmConfiguration,
-        phase: str,
+        analysis: 'TaskComplexityAnalysis',
+        agent_roles: str,
+        phase: str = "execution",
         **kwargs
     ) -> Dict[str, Any]:
-        """Execute a single swarm phase with shared memory integration."""
+        """Execute using strands.swarm with ReAgent-generated specifications."""
         
-        self.logger.info(f"Executing swarm phase: {phase}, config={config}")
+        self.logger.info(f"Executing swarm: {config.initial_size} agents, pattern={config.coordination_pattern.value}")
         
-        # Store task context in shared memory for agents to access
-        await self.shared_memory.store_with_tier(
-            f"task_context:{phase}", 
-            {
-                "task": task,
-                "phase": phase,
-                "config": config.__dict__,
-                "timestamp": time.time()
-            },
-            "shared"
-        )
+        # Format tool context once
+        tool_context = self._format_tool_context()
         
-        # Prepare swarm execution parameters
-        swarm_params = {
-            'task': task,
-            'swarm_size': config.initial_size,
-            'coordination_pattern': config.coordination_pattern.value,
-            **kwargs
-        }
-        
-        # Build tool availability message
-        mcp_tool_count = len(self.mcp_tools) if self.mcp_tools else 0
-        tool_availability_msg = f"You have {mcp_tool_count} MCP tools available including search, read_webpage, and others" if mcp_tool_count > 0 else "Limited tools available"
-        
-        # Execute using the actual Strands swarm tool
+        # Create rich prompt combining YOUR intelligence with strands execution
         swarm_prompt = f"""
-        {task}
+TASK: {task}
+
+SWARM CONFIGURATION:
+- Number of agents: {config.initial_size}
+- Coordination pattern: {config.coordination_pattern.value}
+- Task complexity: {analysis.complexity_level} (score: {analysis.complexity_score}/10)
+
+SPECIALIZED AGENT ROLES (Generated by ReAgent Intelligence Layer):
+{agent_roles}
+
+{tool_context}
+
+EXECUTION INSTRUCTIONS:
+1. Each agent should work on their specialized role
+2. Use memory tools to coordinate and share findings
+3. Use handoff_to_agent when transitioning between roles
+4. Use complete_swarm_task to deliver the final, complete result
+
+Execute this task with the specialized agents using the tools provided.
+The swarm tool will handle agent creation and coordination.
+"""
         
-        Use {config.initial_size} agents working collaboratively.
-        Use store_swarm_memory and retrieve_swarm_memory tools to coordinate between agents.
-        """
-        
-        # Use the actual swarm tool via the base agent
+        # Execute via base agent (which invokes strands.swarm)
+        self.logger.info("Invoking strands.swarm tool...")
         result = await asyncio.to_thread(self.base_agent, swarm_prompt)
-        content = str(result)
-        
-        # Store phase results in shared memory for next phase
-        await self.shared_memory.store_with_tier(
-            f"phase_result:{phase}",
-            {
-                'phase': phase,
-                'result': content,
-                'config_used': config.__dict__,
-                'success': True,
-                'timestamp': time.time()
-            },
-            "shared"
-        )
         
         return {
             'phase': phase,
-            'result': content,
+            'result': str(result),
             'config_used': config,
-            'success': True  # Would be determined from actual result parsing
-        }
-    
-    async def _adaptive_execution_phase(
-        self,
-        task: str,
-        config: SwarmConfiguration,
-        initial_result: Dict[str, Any],
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Execute adaptive phase using shared memory from previous phases."""
-        
-        self.logger.info("Starting adaptive execution phase")
-        
-        # Retrieve previous phase results from shared memory
-        previous_context = await self.shared_memory.retrieve_with_context("phase_result:initial")
-        
-        # Analyze initial results for adaptation opportunities
-        adaptation_prompt = f"""
-        Analyze the initial swarm execution results and determine if adaptations are needed:
-        
-        Original task: {task}
-        Initial result: {initial_result}
-        Current configuration: {config}
-        
-        Previous phase context from shared memory: {previous_context}
-        
-        Use the adapt_swarm_configuration tool to determine if changes are needed.
-        
-        IMPORTANT: Use retrieve_swarm_memory to access:
-        - "findings:initial:*" for individual agent findings from initial phase
-        - "progress:initial" for initial phase progress
-        - "results:initial" for initial phase results
-        
-        If adaptations are recommended:
-        1. Store adaptation reasoning in shared memory
-        2. Execute another swarm phase with the new configuration
-        3. Use shared memory to maintain continuity between phases
-        """
-        
-        adaptation_response = await asyncio.to_thread(self.base_agent, adaptation_prompt)
-        
-        # Store adaptation analysis in shared memory
-        await self.shared_memory.store_with_tier(
-            "adaptation_analysis",
-            {
-                'analysis': str(adaptation_response),
-                'timestamp': time.time(),
-                'initial_result': initial_result,
-                'config': config.__dict__
-            },
-            "shared"
-        )
-        
-        return {
-            **initial_result,
-            'adaptations': [],
-            'adaptation_analysis': adaptation_response,
-            'adaptation_history': [
-                {
-                    'phase': 'adaptive_analysis',
-                    'timestamp': time.time(),
-                    'analysis': adaptation_response
-                }
-            ]
+            'success': True
         }
     
     async def get_execution_history(self) -> List[SwarmResult]:

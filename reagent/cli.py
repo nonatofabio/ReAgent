@@ -404,21 +404,19 @@ def _display_results(result: dict, debug: bool = False, show_memory: bool = Fals
     if result.get("success", False):
         console.print("\n[bold green]✅ Execution Completed Successfully[/bold green]")
         
-        # Create results table
-        table = Table(title="Execution Summary")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="green")
-        
-        table.add_row("Execution Time", f"{result.get('execution_time', 0):.2f}s")
-        table.add_row("Agents Used", str(result.get('agents_used', 0)))
-        table.add_row("Adaptations Made", str(result.get('adaptations_made', 0)))
-        
-        console.print(table)
-        
         # Display content if available
         if result.get("content"):
+            # Extract actual text from nested structure
+            content = result["content"]
+            if isinstance(content, dict) and 'result' in content:
+                display_content = content['result']
+            elif isinstance(content, str):
+                display_content = content
+            else:
+                display_content = str(content)
+            
             console.print("\n[bold blue]Results:[/bold blue]")
-            console.print(Panel(str(result["content"]), title="Swarm Output"))
+            console.print(Panel(display_content, title="Task Output"))
         
         # Display adaptations if any were made
         if result.get("adaptations_made", 0) > 0:
