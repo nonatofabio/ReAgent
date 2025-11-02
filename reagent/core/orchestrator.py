@@ -330,19 +330,44 @@ Swarm Coordination Tools (native to strands):
             # Phase 1: Intelligence Layer (ReAgent's value)
             analysis_result = await self._analyze_task_and_configure(task, config)
             optimized_config = analysis_result['optimized_config']
+            analysis_obj = analysis_result['analysis_obj']
             
-            # Extract task analysis
-            analysis = self._extract_analysis_from_response(analysis_result['analysis'])
+            # If analysis extraction failed, create a default one
+            if analysis_obj is None:
+                from .models import TaskComplexityAnalysis, TaskStep, DomainAssessment
+                analysis_obj = TaskComplexityAnalysis(
+                    complexity_score=5,
+                    complexity_level="medium",
+                    recommended_swarm_size=optimized_config.initial_size,
+                    recommended_pattern=optimized_config.coordination_pattern.value,
+                    steps=[
+                        TaskStep(
+                            description="Analyze task requirements",
+                            estimated_time_minutes=5,
+                            complexity=0.5
+                        )
+                    ],
+                    domains=[
+                        DomainAssessment(
+                            domain="general",
+                            relevance=0.5,
+                            complexity=0.5
+                        )
+                    ],
+                    reasoning="Default analysis used due to extraction failure",
+                    recommendations=["Use default swarm configuration"]
+                )
+                self.logger.debug("Using default TaskComplexityAnalysis due to extraction failure")
             
             # Generate specialized agent roles based on analysis
-            agent_roles = await self._generate_agent_role_specifications(task, analysis)
+            agent_roles = await self._generate_agent_role_specifications(task, analysis_obj)
             self.logger.info(f"Generated {optimized_config.initial_size} specialized agent roles")
             
             # Phase 2: Execution Layer (Delegate to Strands)
             result = await self._execute_swarm_phase(
                 task,
                 optimized_config,
-                analysis,
+                analysis_obj,
                 agent_roles,
                 **kwargs
             )
@@ -396,16 +421,17 @@ Swarm Coordination Tools (native to strands):
         
         analysis_response = await asyncio.to_thread(self.base_agent, analysis_prompt)
         
-        # Extract configuration recommendations using refactored method
-        optimized_config = self._extract_and_apply_analysis(analysis_response, base_config)
+        # Extract configuration recommendations and analysis object using refactored method
+        optimized_config, analysis_obj = self._extract_and_apply_analysis(analysis_response, base_config)
         
         return {
             'analysis': analysis_response,
-            'optimized_config': optimized_config
+            'optimized_config': optimized_config,
+            'analysis_obj': analysis_obj
         }
     def _extract_and_apply_analysis(
         self, response, base_config: SwarmConfiguration
-    ) -> SwarmConfiguration:
+    ) -> tuple[SwarmConfiguration, Optional['TaskComplexityAnalysis']]:
         """
         Extract task complexity analysis from agent response and apply it to configuration.
         
@@ -420,7 +446,7 @@ Swarm Coordination Tools (native to strands):
             base_config: Base configuration to use as fallback
             
         Returns:
-            Optimized SwarmConfiguration based on analysis, or base_config if extraction fails
+            Tuple of (optimized SwarmConfiguration, TaskComplexityAnalysis or None)
         """
         import re
         import json
@@ -505,16 +531,16 @@ Swarm Coordination Tools (native to strands):
                     f"pattern={analysis.recommended_pattern}"
                 )
                 
-                return optimized_config
+                return optimized_config, analysis
             else:
                 # No analysis data found - use base config silently
                 self.logger.debug("No task complexity analysis found in response, using base configuration")
-                return base_config
+                return base_config, None
                 
         except Exception as e:
             # Log error and fall back to base configuration
             self.logger.debug(f"Error during analysis extraction: {str(e)}, using base configuration")
-            return base_config
+            return base_config, None
     
     async def _generate_agent_role_specifications(
         self,
@@ -528,7 +554,7 @@ Based on this task analysis, generate {analysis.recommended_swarm_size} speciali
 
 Task: {task}
 Complexity: {analysis.complexity_level}
-Domains: {[d['domain'] for d in analysis.domains]}
+Domains: {[d.domain for d in analysis.domains]}
 
 For each agent, provide:
 1. Role name (e.g., "Research Specialist", "Analysis Expert")
