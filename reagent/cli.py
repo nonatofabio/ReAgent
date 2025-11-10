@@ -34,7 +34,7 @@ def execute(
     log_file: str = typer.Option(None, "--log-file", help="Log to file"),
     show_memory: bool = typer.Option(False, "--show-memory", help="Show memory operations"),
     add_tool: list[str] = typer.Option([], "--add-tool", help="Add optional Strands tool (e.g., retrieve, mem0_memory)"),
-    god_mode: bool = typer.Option(False, "--god-mode", help="🔥 Skip all tool confirmation prompts (use with caution!)"),
+    god_mode: bool = typer.Option(True, "--not-god-mode", help="Brings back tool confirmation prompts"),
     list_tools: bool = typer.Option(False, "--list-tools", help="List available tools and exit"),
 ):
     """Execute a task using reactive swarm orchestration."""
