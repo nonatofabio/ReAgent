@@ -33,8 +33,16 @@ def execute(
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug logging"),
     log_file: str = typer.Option(None, "--log-file", help="Log to file"),
     show_memory: bool = typer.Option(False, "--show-memory", help="Show memory operations"),
+    add_tool: list[str] = typer.Option([], "--add-tool", help="Add optional Strands tool (e.g., retrieve, mem0_memory)"),
+    god_mode: bool = typer.Option(False, "--god-mode", help="🔥 Skip all tool confirmation prompts (use with caution!)"),
+    list_tools: bool = typer.Option(False, "--list-tools", help="List available tools and exit"),
 ):
     """Execute a task using reactive swarm orchestration."""
+    
+    # Handle --list-tools flag
+    if list_tools:
+        _show_available_tools()
+        return
     
     # Configure logging
     import logging
@@ -69,9 +77,15 @@ def execute(
         title="Starting Execution"
     ))
     
+    # Set god mode environment variable if requested
+    if god_mode:
+        import os
+        os.environ["BYPASS_TOOL_CONSENT"] = "true"
+        console.print("[bold yellow]⚠️  GOD MODE ENABLED - All tool confirmations bypassed![/bold yellow]")
+    
     # Run the async execution
     result = asyncio.run(_execute_task(
-        task, swarm_size, max_size, pattern, timeout, reactive, verbose, debug, show_memory
+        task, swarm_size, max_size, pattern, timeout, reactive, verbose, debug, show_memory, add_tool
     ))
     
     # Display results
@@ -265,6 +279,67 @@ def _clean_memory():
     
     if not memory_dir.exists():
         console.print("[yellow]No memory directory found.[/yellow]")
+
+def _show_available_tools():
+    """Display available tools."""
+    console.print("\n[bold green]📦 ReAgent Available Tools[/bold green]\n")
+    
+    console.print("[bold blue]Default Tools (Always Enabled):[/bold blue]")
+    console.print("  [cyan]File Operations:[/cyan] file_read, file_write, editor")
+    console.print("  [cyan]Code Execution:[/cyan] python_repl")
+    console.print("  [cyan]Workflows:[/cyan] swarm, workflow, batch, use_agent, think")
+    console.print("  [cyan]Web & Network:[/cyan] http_request, browser, duckduckgo_search")
+    console.print("  [cyan]Shell & System:[/cyan] shell, environment")
+    
+    console.print("\n[bold yellow]Optional Tools (use --add-tool):[/bold yellow]")
+    console.print("  [cyan]Memory & RAG:[/cyan]")
+    console.print("    • retrieve - Bedrock Knowledge Base retrieval")
+    console.print("    • memory - Agent memory in Bedrock KB")
+    console.print("    • agent_core_memory - Bedrock Agent Core Memory")
+    console.print("    • mem0_memory - Mem0-based personalization")
+    
+    console.print("  [cyan]Code & Execution:[/cyan]")
+    console.print("    • code_interpreter - Sandboxed code execution")
+    
+    console.print("  [cyan]Multi-modal:[/cyan]")
+    console.print("    • generate_image - AI image generation (Bedrock)")
+    console.print("    • generate_image_stability - Stability AI images")
+    console.print("    • image_reader - Image analysis")
+    console.print("    • nova_reels - AI video generation")
+    console.print("    • diagram - Cloud/UML diagrams")
+    console.print("    • speak - Text-to-speech")
+    
+    console.print("  [cyan]AWS Services:[/cyan]")
+    console.print("    • use_aws - Interact with AWS services")
+    
+    console.print("  [cyan]Advanced:[/cyan]")
+    console.print("    • use_computer - Desktop automation")
+    console.print("    • cron - Task scheduling")
+    console.print("    • slack - Slack integration")
+    console.print("    • rss - RSS feed management")
+    console.print("    • a2a_client - Agent-to-agent communication")
+    
+    console.print("\n[bold cyan]Examples:[/bold cyan]")
+    console.print("  # Use default tools only")
+    console.print("  [dim]reagent execute 'analyze this code'[/dim]")
+    console.print("\n  # Add memory tools")
+    console.print("  [dim]reagent execute 'research AI' --add-tool retrieve --add-tool mem0_memory[/dim]")
+    console.print("\n  # Add AWS integration")
+    console.print("  [dim]reagent execute 'deploy app' --add-tool use_aws[/dim]")
+    console.print("\n  # God mode (skip confirmations)")
+    console.print("  [dim]reagent execute 'automated task' --god-mode[/dim]")
+    console.print()
+
+
+def _clean_memory():
+    """Clean up memory system."""
+    import shutil
+    from pathlib import Path
+    
+    memory_dir = Path("reagent_memory")
+    
+    if not memory_dir.exists():
+        console.print("[yellow]No memory directory found.[/yellow]")
         return
     
     # Ask for confirmation
@@ -314,15 +389,16 @@ def demo(
 
 
 async def _execute_task(
-    task: str, 
-    swarm_size: int, 
-    max_size: int, 
-    pattern: str, 
-    timeout: int, 
-    reactive: bool, 
+    task: str,
+    swarm_size: int,
+    max_size: int,
+    pattern: str,
+    timeout: int,
+    reactive: bool,
     verbose: bool,
     debug: bool = False,
-    show_memory: bool = False
+    show_memory: bool = False,
+    additional_tools: list[str] = None
 ) -> dict:
     """Execute a task asynchronously."""
     
@@ -348,9 +424,14 @@ async def _execute_task(
         ) as progress:
             init_task = progress.add_task("Initializing ReactiveSwarmOrchestrator...", total=None)
             
-            orchestrator = ReactiveSwarmOrchestrator()
+            orchestrator = ReactiveSwarmOrchestrator(
+                additional_tools=additional_tools if additional_tools else None
+            )
             
-            logger.info("ReactiveSwarmOrchestrator initialized")
+            if additional_tools:
+                logger.info(f"ReactiveSwarmOrchestrator initialized with additional tools: {', '.join(additional_tools)}")
+            else:
+                logger.info("ReactiveSwarmOrchestrator initialized with default tools")
             progress.update(init_task, completed=True)
         
         # Execute the task

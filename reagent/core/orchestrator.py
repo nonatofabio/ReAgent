@@ -85,6 +85,7 @@ class ReactiveSwarmOrchestrator:
         enable_logging: bool = True,
         mcp_config_path: Optional[str] = None,
         tools: Optional[List[Any]] = None,
+        additional_tools: Optional[List[str]] = None,  # NEW: Optional tool names to load
         mcp_transport_callable: Optional[Callable[[], MCPTransport]] = None  # Deprecated, kept for backward compatibility
     ):
         self.logger = logging.getLogger()
@@ -124,14 +125,29 @@ class ReactiveSwarmOrchestrator:
             self.logger.warning("mcp_transport_callable is deprecated. Use mcp_config_path with standard MCP configuration instead.")
             self._initialize_mcp_from_transport(mcp_transport_callable)
         
-        # Create base agent with swarm tool and MCP tools
-        tools = [swarm] + self._create_reactive_tools() + self.mcp_tools + (tools if tools else [])
+        # Load default native tools from strands_tools
+        native_tools = self._load_default_native_tools()
+        
+        # Load optional tools if specified
+        if additional_tools:
+            optional_tools = self._load_optional_tools(additional_tools)
+            native_tools.extend(optional_tools)
+        
+        # Create base agent with all tools
+        all_tools = (
+            [swarm] +
+            self._create_reactive_tools() +
+            native_tools +
+            self.mcp_tools +
+            (tools if tools else [])
+        )
+        
         self.base_agent = Agent(
             model=model,
-            tools=tools,
+            tools=all_tools,
             system_prompt=system_prompt
         )
-        self.logger.info(f"Base agent created with {len(tools)} tools")
+        self.logger.info(f"Base agent created with {len(all_tools)} tools ({len(native_tools)} native, {len(self.mcp_tools)} MCP)")
         # Initialize reactive components
         self.shared_memory = ReactiveSharedMemory()
         self.memory = self.shared_memory  # Alias for CLI compatibility
@@ -195,6 +211,82 @@ class ReactiveSwarmOrchestrator:
                 # Just log the error, don't raise during cleanup
                 if hasattr(self, 'logger'):
                     self.logger.error(f"Error stopping MCP client: {str(e)}")
+    
+    def _load_default_native_tools(self) -> List[Any]:
+        """Load essential Strands community tools by default."""
+        tools = []
+        
+        try:
+            # File operations (always available)
+            from strands_tools import file_read, file_write, editor
+            tools.extend([file_read, file_write, editor])
+            self.logger.info("Loaded file operation tools: file_read, file_write, editor")
+        except ImportError as e:
+            self.logger.warning(f"Could not load file tools: {e}")
+        
+        try:
+            # Code execution
+            from strands_tools import python_repl
+            tools.append(python_repl)
+            self.logger.info("Loaded code execution tool: python_repl")
+        except ImportError as e:
+            self.logger.warning(f"Could not load python_repl: {e}")
+        
+        try:
+            # Agents & Workflows (swarm already loaded separately)
+            from strands_tools import workflow, batch, use_agent, think
+            tools.extend([workflow, batch, use_agent, think])
+            self.logger.info("Loaded workflow tools: workflow, batch, use_agent, think")
+        except ImportError as e:
+            self.logger.warning(f"Could not load workflow tools: {e}")
+        
+        try:
+            # Web & Network
+            from strands_tools import http_request, browser
+            tools.extend([http_request, browser])
+            self.logger.info("Loaded web tools: http_request, browser")
+        except ImportError as e:
+            self.logger.warning(f"Could not load web tools: {e}")
+        
+        try:
+            # Shell & System
+            from strands_tools import shell, environment
+            tools.extend([shell, environment])
+            self.logger.info("Loaded shell tools: shell, environment")
+        except ImportError as e:
+            self.logger.warning(f"Could not load shell tools: {e}")
+        
+        try:
+            # Custom web search
+            from .tools.web_search import duckduckgo_search
+            tools.append(duckduckgo_search)
+            self.logger.info("Loaded custom web search: duckduckgo_search")
+        except ImportError as e:
+            self.logger.warning(f"Could not load web search: {e}")
+        
+        return tools
+    
+    def _load_optional_tools(self, tool_names: List[str]) -> List[Any]:
+        """Load optional tools by name from strands_tools package."""
+        tools = []
+        
+        for name in tool_names:
+            try:
+                # Try to import from strands_tools
+                import strands_tools
+                if hasattr(strands_tools, name):
+                    tool_func = getattr(strands_tools, name)
+                    tools.append(tool_func)
+                    self.logger.info(f"Loaded optional tool: {name}")
+                else:
+                    self.logger.error(f"Tool '{name}' not found in strands_tools package")
+            except ImportError as e:
+                self.logger.error(f"Could not import strands_tools for '{name}': {e}")
+            except Exception as e:
+                self.logger.error(f"Could not load optional tool '{name}': {e}")
+        
+        return tools
+    
     
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for reactive orchestration."""
