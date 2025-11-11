@@ -22,3 +22,7 @@ reagent_memory/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local Project Test files
+repl_state
+mcp.json

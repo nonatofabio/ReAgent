@@ -5,6 +5,7 @@ ReAgent CLI - Command-line interface for ReactiveSwarmOrchestrator.
 import asyncio
 import logging
 import typer
+import os
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
@@ -424,8 +425,15 @@ async def _execute_task(
         ) as progress:
             init_task = progress.add_task("Initializing ReactiveSwarmOrchestrator...", total=None)
             
+            # Check is mcp.json exists in the current directory
+            mcp_config_path = os.path.join(os.getcwd(), "mcp.json")
+            if not os.path.exists(mcp_config_path):
+                mcp_config_path = None
+                logger.info("No mcp.json found in the current directory. Using default configuration.")
+            
             orchestrator = ReactiveSwarmOrchestrator(
-                additional_tools=additional_tools if additional_tools else None
+                additional_tools=additional_tools if additional_tools else None,
+                mcp_config_path=mcp_config_path if mcp_config_path else None
             )
             
             if additional_tools:
