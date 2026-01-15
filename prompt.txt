@@ -1,0 +1,455 @@
+# ReAgent Codebase Review & Simplification Analysis
+
+## Objective
+
+Perform a comprehensive code review of the ReAgent repository to identify inconsistencies, redundancies, and simplification opportunities. The goal is to make the package simpler for both humans and AI agents to understand and interact with.
+
+## Context
+
+ReAgent is a reactive multi-agent orchestration framework built on AWS Strands Agents SDK. Two companion documents exist in this repository:
+- `INTEGRATION_PLAN.md` - Plan to integrate semantic shared memory via local_faiss_mcp
+- `EDD_TEST_PLAN.md` - Evaluation Driven Development test plan
+
+Before implementing the memory integration, we need to understand the current codebase quality and identify technical debt that should be addressed.
+
+---
+
+## CRITICAL: Mandatory Subagent Usage
+
+**YOU MUST USE SUBAGENTS (Task tool) FOR ALL ANALYSIS WORK.**
+
+Reading files, searching code, and analyzing patterns directly in your main context will consume tokens rapidly and cause context overflow. Instead, delegate ALL investigative work to subagents.
+
+### Subagent Strategy
+
+```
+Main Agent (You)
+├── Coordinates work
+├── Receives summaries from subagents
+├── Synthesizes findings into CODEBASE_REVIEW.md
+└── NEVER reads files directly (except to write output)
+
+Subagents (Task tool)
+├── Perform all code_cerebro operations
+├── Read and analyze files
+├── Search for patterns
+└── Return concise summaries with file:line references
+```
+
+### Required Subagent Delegation Pattern
+
+For EVERY analysis task, use this pattern:
+
+```python
+# WRONG - Do not do this
+Read(file_path="/Users/fnp/tmp/ReAgent/reagent/core/memory.py")  # Consumes YOUR tokens
+
+# CORRECT - Always delegate
+Task(
+    subagent_type="Explore",
+    description="Analyze memory.py structure",
+    prompt="Analyze /Users/fnp/tmp/ReAgent/reagent/core/memory.py.
+            Return: 1) List of classes and methods,
+            2) Any code smells or inconsistencies with file:line references,
+            3) Public API surface. Be concise."
+)
+```
+
+### Parallel Subagent Execution
+
+Launch multiple subagents in parallel when tasks are independent:
+
+```python
+# Launch all file analyses in parallel (single message, multiple Task calls)
+Task(subagent_type="Explore", description="Analyze orchestrator.py", prompt="...")
+Task(subagent_type="Explore", description="Analyze memory.py", prompt="...")
+Task(subagent_type="Explore", description="Analyze adaptation.py", prompt="...")
+Task(subagent_type="Explore", description="Analyze mcp.py", prompt="...")
+```
+
+### Subagent Prompts Must Request
+
+Every subagent prompt MUST ask for:
+1. **Concise summary** (not full file contents)
+2. **Specific file:line references** for findings
+3. **Categorized issues** (Critical/Major/Minor)
+4. **Actionable recommendations**
+
+---
+
+## Your Task
+
+### Phase 1: Codebase Indexing (Required First Step)
+
+**Delegate to subagent:**
+```python
+Task(
+    subagent_type="Explore",
+    description="Index ReAgent codebase",
+    prompt="""Index and analyze the ReAgent codebase structure:
+    1. Run code_cerebro_build_code_index on /Users/fnp/tmp/ReAgent/reagent/
+    2. Run code_cerebro_generate_codebase_overview
+    3. Return: file count, total lines, module list, key classes per module.
+    Be concise - summary only, no code dumps."""
+)
+```
+
+### Phase 2: Structural Analysis (Via Subagent)
+
+**Delegate to subagent:**
+```python
+Task(
+    subagent_type="Explore",
+    description="Analyze module dependencies",
+    prompt="""Analyze ReAgent module structure and dependencies:
+    1. Use code_cerebro_analyze_call_tree on key classes
+    2. Use code_cerebro_analyze_caller_tree to find coupling
+    3. Return: dependency diagram (text), circular dependencies found,
+       tightly coupled components. Include file:line references."""
+)
+```
+
+Analyze the codebase structure and document:
+
+1. **Module Organization**
+   - Is the folder structure logical and consistent?
+   - Are there modules that should be merged or split?
+   - Is there clear separation of concerns?
+
+2. **Dependency Graph**
+   - Use code_cerebro_analyze_call_tree and code_cerebro_analyze_caller_tree
+   - Identify circular dependencies
+   - Find tightly coupled components that could be decoupled
+
+3. **Public API Surface**
+   - What is exported from each module?
+   - Is the API surface minimal and coherent?
+   - Are there internal functions that are accidentally public?
+
+### Phase 3: Code Quality Analysis (Via Parallel Subagents)
+
+**Launch 4 parallel subagents - one per core file:**
+
+```python
+# Launch ALL FOUR in a SINGLE message (parallel execution)
+Task(
+    subagent_type="Explore",
+    description="Review orchestrator.py quality",
+    prompt="""Analyze /Users/fnp/tmp/ReAgent/reagent/core/orchestrator.py for code quality.
+    Check: function length (>50 lines?), nested conditionals, dead code, duplicate patterns,
+    naming consistency, type hints, error handling, docstrings.
+    Return: table of issues found with file:line, severity (Critical/Major/Minor), fix recommendation.
+    MAX 500 words."""
+)
+
+Task(
+    subagent_type="Explore",
+    description="Review memory.py quality",
+    prompt="""Analyze /Users/fnp/tmp/ReAgent/reagent/core/memory.py for code quality.
+    SPECIAL FOCUS: This is the integration target for semantic memory.
+    Check: function length, nested conditionals, dead code, duplicate patterns,
+    naming consistency, type hints, error handling, docstrings.
+    Also document: all public methods, the tier system, SHARED tier placeholder location.
+    Return: table of issues with file:line, severity, fix. MAX 500 words."""
+)
+
+Task(
+    subagent_type="Explore",
+    description="Review adaptation.py quality",
+    prompt="""Analyze /Users/fnp/tmp/ReAgent/reagent/core/adaptation.py for code quality.
+    Check: function length, nested conditionals, dead code, duplicate patterns,
+    naming consistency, type hints, error handling, docstrings.
+    Return: table of issues with file:line, severity, fix. MAX 500 words."""
+)
+
+Task(
+    subagent_type="Explore",
+    description="Review mcp.py quality",
+    prompt="""Analyze /Users/fnp/tmp/ReAgent/reagent/utils/mcp.py for code quality.
+    Check: function length, nested conditionals, dead code, duplicate patterns,
+    naming consistency, type hints, error handling, docstrings.
+    Return: table of issues with file:line, severity, fix. MAX 300 words."""
+)
+```
+
+**Files to Review (Priority Order):**
+1. `reagent/core/orchestrator.py` (~733 lines) - Main swarm execution
+2. `reagent/core/memory.py` (~587 lines) - Memory system (integration target)
+3. `reagent/core/adaptation.py` (~488 lines) - Performance monitoring
+4. `reagent/utils/mcp.py` (~128 lines) - MCP utilities
+
+**Analysis Checklist per File:**
+- [ ] Function length - Are there functions > 50 lines that should be split?
+- [ ] Cyclomatic complexity - Are there deeply nested conditionals?
+- [ ] Dead code - Are there unused functions, classes, or imports?
+- [ ] Duplicate code - Are there repeated patterns that could be abstracted?
+- [ ] Naming consistency - Do naming conventions follow a consistent pattern?
+- [ ] Type hints - Are type annotations complete and correct?
+- [ ] Error handling - Is error handling consistent and comprehensive?
+- [ ] Documentation - Are docstrings present and accurate?
+
+### Phase 4: Inconsistency Detection (Via Subagent)
+
+**Delegate pattern searching to subagent:**
+```python
+Task(
+    subagent_type="Explore",
+    description="Find codebase inconsistencies",
+    prompt="""Search ReAgent codebase (/Users/fnp/tmp/ReAgent/reagent/) for inconsistencies:
+
+    1. NAMING: Mixed camelCase/snake_case, inconsistent terminology (task vs job vs execution)
+    2. PATTERNS: Different approaches to similar problems, mixed async/await usage
+    3. API: Functions with similar purposes but different signatures
+    4. CONFIG: Hardcoded values, scattered configuration
+
+    Use code_cerebro_pattern_search and Grep to find patterns.
+    Return: categorized list of inconsistencies with file:line references.
+    MAX 600 words."""
+)
+```
+
+Search for specific inconsistencies:
+
+1. **Naming Inconsistencies**
+   - Mixed naming conventions (camelCase vs snake_case)
+   - Inconsistent terminology (e.g., "task" vs "job" vs "execution")
+   - Abbreviated vs full names
+
+2. **Pattern Inconsistencies**
+   - Different approaches to similar problems
+   - Inconsistent use of async/await
+   - Mixed error handling patterns (exceptions vs return codes)
+
+3. **API Inconsistencies**
+   - Functions with similar purposes but different signatures
+   - Inconsistent parameter ordering
+   - Mixed return types for similar operations
+
+4. **Configuration Inconsistencies**
+   - Hardcoded values that should be configurable
+   - Configuration scattered across files
+   - Inconsistent defaults
+
+### Phase 5: Simplification Opportunities (Via Subagent)
+
+**Delegate simplification analysis:**
+```python
+Task(
+    subagent_type="Explore",
+    description="Find simplification opportunities",
+    prompt="""Analyze ReAgent (/Users/fnp/tmp/ReAgent/reagent/) for simplification:
+
+    FOR HUMANS:
+    - Complex abstractions that could be simplified
+    - Missing or misleading documentation
+    - Non-obvious code paths
+
+    FOR AI AGENTS:
+    - Complex tool signatures
+    - Ambiguous function names
+    - Missing type information
+    - Overly flexible APIs (too many optional params)
+
+    FOR INTEGRATION (memory.py focus):
+    - Barriers to adding semantic memory tier
+    - Coupling that complicates MCP integration
+    - Missing extension points
+
+    Return: 3 categorized lists with specific recommendations and file:line refs.
+    MAX 500 words."""
+)
+```
+
+Identify opportunities to simplify:
+
+1. **For Human Developers**
+   - Complex abstractions that could be simplified
+   - Missing or misleading documentation
+   - Non-obvious code paths
+   - Unnecessary indirection
+
+2. **For AI Agents**
+   - Complex tool signatures that could be simplified
+   - Ambiguous function names
+   - Missing type information
+   - Overly flexible APIs (too many optional parameters)
+
+3. **For Integration**
+   - Barriers to adding the semantic memory tier
+   - Coupling that would complicate the MCP integration
+   - Missing extension points
+
+### Phase 6: Memory System Deep Dive (Via Subagent)
+
+**Delegate deep memory analysis:**
+```python
+Task(
+    subagent_type="Explore",
+    description="Deep dive memory.py for integration",
+    prompt="""Deep analysis of /Users/fnp/tmp/ReAgent/reagent/core/memory.py for integration readiness:
+
+    1. ARCHITECTURE:
+       - Document the tier system (LOCAL, PERSISTENT, SHARED, ARCHIVE)
+       - Map ALL public methods with signatures
+       - Find the SHARED tier placeholder code (exact lines)
+
+    2. INTEGRATION BLOCKERS:
+       - What must change to add SEMANTIC tier?
+       - What coupling exists with orchestrator.py?
+       - Are there existing tests?
+
+    3. SIMPLIFICATION FOR INTEGRATION:
+       - Can tier system be more pluggable?
+       - Is there redundant storage logic?
+       - How is similarity search currently implemented? (find get_similar_executions)
+
+    Cross-reference with INTEGRATION_PLAN.md in same directory.
+    Return: structured analysis with exact file:line references. MAX 700 words."""
+)
+```
+
+Special focus on `reagent/core/memory.py` since it's the integration target:
+
+1. **Current Architecture**
+   - Document the tier system (LOCAL, PERSISTENT, SHARED, ARCHIVE)
+   - Map all public methods and their purposes
+   - Identify the SHARED tier placeholder code
+
+2. **Integration Blockers**
+   - What needs to change to add SEMANTIC tier?
+   - What coupling exists with other modules?
+   - What tests exist (if any)?
+
+3. **Simplification for Integration**
+   - Can the tier system be made more pluggable?
+   - Is there redundant storage logic?
+   - Could the similarity search be abstracted better?
+
+## Output Format
+
+Create a document called `CODEBASE_REVIEW.md` with the following structure:
+
+```markdown
+# ReAgent Codebase Review
+
+## Executive Summary
+[2-3 paragraph summary of findings]
+
+## Codebase Statistics
+- Total files: X
+- Total lines: X
+- Primary language: Python
+- Key dependencies: [list]
+
+## Module Structure
+[Diagram and description of module organization]
+
+## Inconsistencies Found
+
+### Critical (Must Fix Before Integration)
+| ID | Location | Description | Recommended Fix |
+|----|----------|-------------|-----------------|
+| C1 | file:line | ... | ... |
+
+### Major (Should Fix)
+| ID | Location | Description | Recommended Fix |
+|----|----------|-------------|-----------------|
+| M1 | file:line | ... | ... |
+
+### Minor (Nice to Have)
+| ID | Location | Description | Recommended Fix |
+|----|----------|-------------|-----------------|
+| N1 | file:line | ... | ... |
+
+## Simplification Recommendations
+
+### For Human Developers
+1. [Recommendation with rationale]
+
+### For AI Agents
+1. [Recommendation with rationale]
+
+### For Memory Integration
+1. [Recommendation with rationale]
+
+## Technical Debt Inventory
+[List of technical debt items with estimated effort]
+
+## Recommended Refactoring Sequence
+[Ordered list of refactoring steps to prepare for integration]
+
+## Appendix: Detailed File Analysis
+[Per-file analysis with specific line references]
+```
+
+## Tools Available
+
+You have access to these code analysis tools:
+
+- `code_cerebro_build_code_index` - Index the codebase (run first)
+- `code_cerebro_generate_codebase_overview` - High-level structure
+- `code_cerebro_search_codebase_map` - Explore specific areas
+- `code_cerebro_locate_symbol` - Find symbol definitions
+- `code_cerebro_locate_symbol_usages` - Find all references
+- `code_cerebro_search_symbol` - Fuzzy symbol search
+- `code_cerebro_analyze_call_tree` - What does X call?
+- `code_cerebro_analyze_caller_tree` - What calls X?
+- `code_cerebro_analyze_file_structure` - Compact file representation
+- `code_cerebro_pattern_search` - AST pattern matching
+- `code_cerebro_code_search` - Full-text search
+
+Also use standard tools:
+- `Read` - Read specific files
+- `Grep` - Search for patterns
+- `Glob` - Find files by pattern
+
+## Constraints
+
+1. **MANDATORY SUBAGENTS** - You MUST use Task tool for ALL analysis. Direct file reads are PROHIBITED except for writing the final output document.
+2. **Be Specific** - Every finding must include file path and line number
+3. **Be Actionable** - Every issue must have a recommended fix
+4. **Prioritize** - Focus on issues that affect the memory integration first
+5. **Reference Plans** - Cross-reference findings with INTEGRATION_PLAN.md
+6. **Token Efficiency** - Subagents return summaries, not full file contents
+7. **Parallel Execution** - Launch independent subagents in parallel (single message, multiple Task calls)
+
+## Success Criteria
+
+The review is complete when:
+- [ ] All core files have been analyzed
+- [ ] CODEBASE_REVIEW.md is created with all required sections
+- [ ] At least 10 inconsistencies are documented with fixes
+- [ ] At least 5 simplification recommendations are provided
+- [ ] Memory system is fully documented for integration readiness
+- [ ] Technical debt is inventoried with effort estimates
+
+## Start Command
+
+**Begin by launching the Phase 1 subagent to index the codebase:**
+
+```python
+Task(
+    subagent_type="Explore",
+    description="Index ReAgent codebase",
+    prompt="""Index and analyze the ReAgent codebase structure:
+    1. Run code_cerebro_build_code_index on /Users/fnp/tmp/ReAgent/reagent/
+    2. Run code_cerebro_generate_codebase_overview
+    3. Return: file count, total lines, module list, key classes per module.
+    Be concise - summary only, no code dumps."""
+)
+```
+
+**Then proceed through phases 2-6, using subagents for ALL analysis.**
+
+**Recommended execution flow:**
+1. Phase 1: Index (1 subagent)
+2. Phase 2: Structure (1 subagent)
+3. Phase 3: Quality (4 parallel subagents - one per file)
+4. Phase 4: Inconsistencies (1 subagent)
+5. Phase 5: Simplification (1 subagent)
+6. Phase 6: Memory deep dive (1 subagent)
+7. Synthesize all subagent outputs into CODEBASE_REVIEW.md
+
+**Total: ~10 subagent calls, most can run in parallel**
+
+Do not stop until you have created the complete CODEBASE_REVIEW.md document.
